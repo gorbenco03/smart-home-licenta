@@ -1,0 +1,76 @@
+import axios from 'axios';
+import { API_BASE } from './config';
+import { useAppStore } from '../store';
+import { SensorReading, AlertItem, NodeInfo, AutomationRule } from '../types';
+
+const client = axios.create({ baseURL: API_BASE });
+
+// Injectează token JWT automat la fiecare request
+client.interceptors.request.use((config) => {
+  const token = useAppStore.getState().token;
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// 401 → logout automat
+client.interceptors.response.use(
+  (r) => r,
+  (error) => {
+    if (error.response?.status === 401) {
+      useAppStore.getState().logout();
+    }
+    return Promise.reject(error);
+  },
+);
+
+export const api = {
+  auth: {
+    login: (username: string, password: string) =>
+      client.post<{ access_token: string; user: { id: number; username: string } }>(
+        '/auth/login', { username, password },
+      ).then((r) => r.data),
+  },
+
+  sensors: {
+    latest: () =>
+      client.get<Record<string, SensorReading>>('/sensors/latest').then((r) => r.data),
+
+    history: (nodeId: string, from?: string, to?: string, limit = 200) =>
+      client.get<SensorReading[]>('/sensors/history', {
+        params: { nodeId, from, to, limit },
+      }).then((r) => r.data),
+
+    nodes: () =>
+      client.get<NodeInfo[]>('/sensors/nodes').then((r) => r.data),
+  },
+
+  alerts: {
+    list: (limit = 50) =>
+      client.get<AlertItem[]>('/alerts', { params: { limit } }).then((r) => r.data),
+
+    unreadCount: () =>
+      client.get<number>('/alerts/unread-count').then((r) => r.data),
+
+    acknowledge: (id: number) =>
+      client.patch<AlertItem>(`/alerts/${id}/acknowledge`).then((r) => r.data),
+  },
+
+  commands: {
+    send: (nodeId: string, action: string, relay?: number) =>
+      client.post(`/commands/${nodeId}`, { action, relay }).then((r) => r.data),
+  },
+
+  rules: {
+    list: () =>
+      client.get<AutomationRule[]>('/rules').then((r) => r.data),
+
+    create: (rule: Partial<AutomationRule>) =>
+      client.post<AutomationRule>('/rules', rule).then((r) => r.data),
+
+    update: (id: number, rule: Partial<AutomationRule>) =>
+      client.put<AutomationRule>(`/rules/${id}`, rule).then((r) => r.data),
+
+    remove: (id: number) =>
+      client.delete(`/rules/${id}`).then((r) => r.data),
+  },
+};
