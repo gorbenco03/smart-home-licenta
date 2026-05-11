@@ -1,0 +1,21 @@
+# ACL — Access Control List Mosquitto
+
+user esp32_node_a
+topic write home/esp32_node_a/sensors
+topic write home/alerts
+topic write home/esp32_node_a/status
+topic read  home/esp32_node_a/commands
+
+user esp32_node_b
+topic write home/esp32_node_b/sensors
+topic write home/alerts
+topic write home/esp32_node_b/status
+topic read  home/esp32_node_b/commands
+
+user nestjs_api
+topic read  home/#
+topic write home/esp32_node_a/commands
+topic write home/esp32_node_b/commands
+
+user admin
+topic readwrite #

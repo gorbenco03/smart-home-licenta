@@ -1,0 +1,42 @@
+# ─── ESP32 ───────────────────────────────────────────────
+esp32/*/config.py
+esp32/*/certs/
+
+# ─── Gateway certificates ────────────────────────────────
+gateway/mosquitto/certs/
+gateway/ml/models/
+gateway/ml/venv/
+gateway/ml/__pycache__/
+gateway/ml/*.pyc
+
+# ─── API (NestJS) ────────────────────────────────────────
+api/node_modules/
+api/dist/
+api/.env
+api/.env.local
+
+# ─── Mobile (Expo) ───────────────────────────────────────
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/build/
+mobile/.env
+mobile/.env.local
+
+# ─── Baze de date / backup ───────────────────────────────
+*.sql.backup
+*.dump
+
+# ─── OS ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── IDE ─────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ─── Logs ────────────────────────────────────────────────
+*.log
+logs/

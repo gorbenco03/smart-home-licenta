@@ -1,0 +1,14 @@
+[Unit]
+Description=Smart Home ML Scheduler
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/gateway/ml
+ExecStart=/home/pi/gateway/ml/venv/bin/python3 /home/pi/gateway/ml/scheduler.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
