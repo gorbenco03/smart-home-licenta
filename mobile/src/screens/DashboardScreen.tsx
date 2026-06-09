@@ -12,7 +12,14 @@ import { SensorReading } from '../types';
 import { disconnectSocket } from '../services/socket';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../types';
+import { CompositeNavigationProp } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { RootStackParamList, MainTabParamList } from '../types';
+
+type DashboardNavProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Dashboard'>,
+  StackNavigationProp<RootStackParamList>
+>;
 
 // Static sparkline history shapes (will animate via WS updates in future)
 const TREND_TEMP   = [20.5, 21.0, 21.4, 21.8, 22.0, 22.1];
@@ -30,7 +37,7 @@ export default function DashboardScreen() {
   const setLatest      = useAppStore((s) => s.setLatestReading);
   const connected      = useAppStore((s) => s.connected);
   const logout         = useAppStore((s) => s.logout);
-  const navigation     = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const navigation     = useNavigation<DashboardNavProp>();
 
   function handleLogout() {
     disconnectSocket();

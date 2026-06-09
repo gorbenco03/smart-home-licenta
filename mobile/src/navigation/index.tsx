@@ -129,7 +129,7 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {token ? (
-          <>
+          <Stack.Group>
             <Stack.Screen name="Main" component={MainTabs} />
             <Stack.Screen
               name="Setup"
@@ -139,7 +139,7 @@ export default function AppNavigator() {
                 <SetupScreen onDone={() => props.navigation.goBack()} />
               )}
             </Stack.Screen>
-          </>
+          </Stack.Group>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />
         )}

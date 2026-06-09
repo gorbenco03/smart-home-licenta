@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  FlatList, ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
+  FlatList, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { api } from '../services/api';
+import axios from 'axios';
 import { T } from '../theme';
+
+// Client dedicat pentru setup — mereu vorbește cu hotspot-ul RPi
+// indiferent de ce e setat în config.ts
+const setupClient = axios.create({ baseURL: 'http://192.168.4.1:3000/api' });
 
 interface WifiNetwork {
   ssid: string;
@@ -22,17 +26,21 @@ export default function SetupScreen({ onDone }: { onDone: () => void }) {
   const [selected, setSelected]   = useState<WifiNetwork | null>(null);
   const [password, setPassword]   = useState('');
   const [error, setError]         = useState('');
+  const doneTimerRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => { scanNetworks(); }, []);
+  useEffect(() => {
+    scanNetworks();
+    return () => { if (doneTimerRef.current) clearTimeout(doneTimerRef.current); };
+  }, []);
 
   async function scanNetworks() {
     setLoading(true);
     setError('');
     try {
-      const data = await api.setup.scanNetworks();
+      const { data } = await setupClient.get('/setup/networks');
       setNetworks(data);
     } catch {
-      setError('Nu s-au putut scana rețelele. Verifică conexiunea la SmartHome-Setup.');
+      setError('Nu s-au putut scana rețelele. Verifică că ești conectat la SmartHome-Setup.');
     } finally {
       setLoading(false);
     }
@@ -43,11 +51,13 @@ export default function SetupScreen({ onDone }: { onDone: () => void }) {
     setStep('connecting');
     setError('');
     try {
-      const result = await api.setup.connectToNetwork(selected.ssid, password);
+      const { data: result } = await setupClient.post('/setup/connect', {
+        ssid: selected.ssid,
+        password,
+      });
       if (result.success) {
         setStep('done');
-        // Așteptăm 5s ca RPi să se reconecteze, apoi continuăm
-        setTimeout(() => onDone(), 5000);
+        doneTimerRef.current = setTimeout(() => onDone(), 5000);
       } else {
         setError(result.message);
         setStep('password');
