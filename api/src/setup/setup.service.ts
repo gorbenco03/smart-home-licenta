@@ -33,7 +33,7 @@ export class SetupService {
     try {
       // Verifică dacă hotspot-ul e activ
       const { stdout: hotspotCheck } = await execAsync(
-        `nmcli con show --active | grep -i hotspot || true`
+        `sudo nmcli con show --active | grep -i hotspot || true`
       );
       if (hotspotCheck.trim()) {
         return {
@@ -45,7 +45,7 @@ export class SetupService {
 
       // Verifică conexiunea WiFi activă
       const { stdout } = await execAsync(
-        `nmcli -t -f DEVICE,STATE,CONNECTION dev | grep wlan0 || true`
+        `sudo nmcli -t -f DEVICE,STATE,CONNECTION dev | grep wlan0 || true`
       );
       const parts = stdout.trim().split(':');
       if (parts[1] === 'connected') {
@@ -69,11 +69,11 @@ export class SetupService {
   async scanNetworks(): Promise<WifiNetwork[]> {
     try {
       // Rescanare forțată
-      await execAsync(`nmcli dev wifi rescan ifname wlan0 || true`);
+      await execAsync(`sudo nmcli dev wifi rescan ifname wlan0 || true`);
       await new Promise(r => setTimeout(r, 2000));
 
       const { stdout } = await execAsync(
-        `nmcli -t -f SSID,SIGNAL,SECURITY,IN-USE dev wifi list ifname wlan0`
+        `sudo nmcli -t -f SSID,SIGNAL,SECURITY,IN-USE dev wifi list ifname wlan0`
       );
 
       const seen = new Set<string>();
@@ -113,14 +113,14 @@ export class SetupService {
       });
 
       // Oprește hotspot-ul dacă e activ
-      await execAsync(`nmcli con down "SmartHome-Hotspot" || true`);
+      await execAsync(`sudo nmcli con down "SmartHome-Hotspot" || true`);
       await new Promise(r => setTimeout(r, 1000));
 
       // Conectare la noua rețea
       // Dacă există deja profil pentru acest SSID, îl actualizăm
-      await execAsync(`nmcli con delete "${ssid}" || true`);
+      await execAsync(`sudo nmcli con delete "${ssid}" || true`);
       await execAsync(
-        `nmcli dev wifi connect "${ssid}" password "${password}" ifname wlan0`
+        `sudo nmcli dev wifi connect "${ssid}" password "${password}" ifname wlan0`
       );
 
       this.logger.log(`[Setup] Conectat la ${ssid}!`);
@@ -137,21 +137,21 @@ export class SetupService {
   async startHotspot(): Promise<void> {
     try {
       this.logger.log('[Setup] Pornire hotspot SmartHome-Setup...');
-      await execAsync(`nmcli con down "SmartHome-Hotspot" || true`);
-      await execAsync(`nmcli con delete "SmartHome-Hotspot" || true`);
+      await execAsync(`sudo nmcli con down "SmartHome-Hotspot" || true`);
+      await execAsync(`sudo nmcli con delete "SmartHome-Hotspot" || true`);
       await execAsync(
-        `nmcli con add type wifi ifname wlan0 con-name "SmartHome-Hotspot" ` +
+        `sudo nmcli con add type wifi ifname wlan0 con-name "SmartHome-Hotspot" ` +
         `autoconnect no ssid "${SetupService.HOTSPOT_SSID}"`
       );
       await execAsync(
-        `nmcli con modify "SmartHome-Hotspot" ` +
+        `sudo nmcli con modify "SmartHome-Hotspot" ` +
         `802-11-wireless.mode ap ` +
         `802-11-wireless-security.key-mgmt wpa-psk ` +
         `802-11-wireless-security.psk "${SetupService.HOTSPOT_PASS}" ` +
         `ipv4.method shared ` +
         `ipv4.addresses ${SetupService.HOTSPOT_IP}/24`
       );
-      await execAsync(`nmcli con up "SmartHome-Hotspot"`);
+      await execAsync(`sudo nmcli con up "SmartHome-Hotspot"`);
       this.logger.log('[Setup] Hotspot activ: SmartHome-Setup / smarthome2026');
     } catch (e) {
       this.logger.error('[Setup] Eroare pornire hotspot:', e.message);
