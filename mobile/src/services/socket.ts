@@ -6,6 +6,18 @@ import { SensorReading, AlertItem } from '../types';
 let socket: Socket | null = null;
 
 export function connectSocket() {
+  // Dacă există deja un socket conectat sau în curs de conectare, nu crea altul
+  if (socket && (socket.connected || socket.active)) {
+    return socket;
+  }
+
+  // Închide orice socket vechi înainte de a crea unul nou
+  if (socket) {
+    socket.removeAllListeners();
+    socket.disconnect();
+    socket = null;
+  }
+
   const token = useAppStore.getState().token;
 
   socket = io(`${WS_HOST}/live`, {
@@ -13,6 +25,7 @@ export function connectSocket() {
     transports: ['websocket'],
     reconnectionDelay: 3000,
     reconnectionAttempts: Infinity,
+    autoConnect: true,
   });
 
   socket.on('connect', () => {
@@ -20,8 +33,13 @@ export function connectSocket() {
     useAppStore.getState().setConnected(true);
   });
 
-  socket.on('disconnect', () => {
-    console.log('[WS] Deconectat');
+  socket.on('disconnect', (reason) => {
+    console.log('[WS] Deconectat:', reason);
+    useAppStore.getState().setConnected(false);
+  });
+
+  socket.on('connect_error', (err) => {
+    console.log('[WS] Eroare conectare:', err.message);
     useAppStore.getState().setConnected(false);
   });
 
@@ -41,8 +59,12 @@ export function connectSocket() {
 }
 
 export function disconnectSocket() {
-  socket?.disconnect();
-  socket = null;
+  if (socket) {
+    socket.removeAllListeners();
+    socket.disconnect();
+    socket = null;
+  }
+  useAppStore.getState().setConnected(false);
 }
 
 export function getSocket() {

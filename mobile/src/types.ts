@@ -30,6 +30,7 @@ export interface NodeInfo {
   description: string;
   lastSeen: string | null;
   online: boolean;
+  nodeType?: 'sensor' | 'camera' | 'hybrid' | null;
 }
 
 export interface AutomationRule {

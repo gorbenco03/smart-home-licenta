@@ -64,6 +64,13 @@ export class SensorsService {
     return this.nodesRepo.find({ order: { nodeId: 'ASC' } });
   }
 
+  async upsertNode(nodeId: string, location: string, nodeType?: string): Promise<Node> {
+    const existing = await this.nodesRepo.findOne({ where: { nodeId } });
+    if (existing) return existing;
+    const node = this.nodesRepo.create({ nodeId, location, online: false, nodeType: nodeType ?? null });
+    return this.nodesRepo.save(node);
+  }
+
   async updateNodeStatus(data: { node_id: string; status: string }): Promise<void> {
     const online = data.status === 'online';
     await this.nodesRepo.update({ nodeId: data.node_id }, { online, lastSeen: new Date() });

@@ -7,63 +7,38 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { useAppStore } from '../store';
 import { AlertItem } from '../types';
+import { T } from '../theme';
 
-const SEVERITY_COLOR: Record<string, string> = {
-  low:      '#64748b',
-  medium:   '#f59e0b',
-  high:     '#f97316',
-  critical: '#ef4444',
+const SEV_COLOR: Record<string, string> = {
+  low:      T.text3,
+  medium:   T.warning,
+  high:     T.accent,
+  critical: T.danger,
 };
 
-const ALERT_LABEL: Record<string, string> = {
-  GAS_DETECTED:   '🔥 Gaz detectat',
-  MOTION_NIGHT:   '👁 Mișcare nocturnă',
-  ML_ANOMALY:     '🤖 Anomalie ML',
-  ALERT_HEAT:     '🌡 Temperatură ridicată',
-  ALERT_COLD:     '❄️ Temperatură scăzută',
+const ALERT_META: Record<string, { title: string; icon: string }> = {
+  GAS_DETECTED: { title: 'Gaz detectat',          icon: '🔥' },
+  MOTION_NIGHT: { title: 'Mișcare nocturnă',       icon: '👁' },
+  ML_ANOMALY:   { title: 'Anomalie ML',            icon: '🤖' },
+  ALERT_HEAT:   { title: 'Temperatură ridicată',   icon: '🌡' },
+  ALERT_COLD:   { title: 'Temperatură scăzută',    icon: '❄️' },
 };
 
-function AlertRow({ item, onAck }: { item: AlertItem; onAck: (id: number) => void }) {
-  const color = SEVERITY_COLOR[item.severity] ?? '#64748b';
-  const label = ALERT_LABEL[item.alertType] ?? item.alertType;
-
-  return (
-    <View style={[s.row, item.acknowledged && s.rowAcked]}>
-      <View style={[s.severityBar, { backgroundColor: color }]} />
-      <View style={s.rowContent}>
-        <Text style={[s.alertLabel, { color }]}>{label}</Text>
-        <Text style={s.alertMeta}>
-          {item.location}  ·  {new Date(item.time).toLocaleString('ro-RO')}
-        </Text>
-        {item.details && (
-          <Text style={s.alertDetails}>
-            {Object.entries(item.details).map(([k, v]) => `${k}: ${v}`).join(' | ')}
-          </Text>
-        )}
-      </View>
-      {!item.acknowledged && (
-        <TouchableOpacity style={s.ackBtn} onPress={() => onAck(item.id)}>
-          <Text style={s.ackBtnText}>✓</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-}
+type FilterKey = 'all' | 'unread' | 'critical';
 
 export default function AlertsScreen() {
   const qc          = useQueryClient();
   const clearUnread = useAppStore((s) => s.clearUnread);
   const ackAlert    = useAppStore((s) => s.acknowledgeAlert);
+  const [filter, setFilter] = React.useState<FilterKey>('all');
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['alerts'],
     queryFn: () => api.alerts.list(100),
     refetchInterval: 10_000,
   });
 
-  useEffect(() => {
-    clearUnread();
-  }, []);
+  useEffect(() => { clearUnread(); }, []);
 
   const ackMutation = useMutation({
     mutationFn: (id: number) => api.alerts.acknowledge(id),
@@ -73,31 +48,71 @@ export default function AlertsScreen() {
     },
   });
 
-  const unread = (data ?? []).filter((a) => !a.acknowledged).length;
+  const allAlerts   = data ?? [];
+  const unreadCount = allAlerts.filter(a => !a.acknowledged).length;
+
+  const filtered = allAlerts.filter(a => {
+    if (filter === 'unread')   return !a.acknowledged;
+    if (filter === 'critical') return a.severity === 'critical';
+    return true;
+  });
+
+  const FILTERS: Array<{ key: FilterKey; label: string; count: number }> = [
+    { key: 'all',      label: 'Toate',   count: allAlerts.length },
+    { key: 'unread',   label: 'Necitite',count: unreadCount },
+    { key: 'critical', label: 'Critice', count: allAlerts.filter(a => a.severity === 'critical').length },
+  ];
 
   return (
-    <View style={s.container}>
+    <View style={s.root}>
+      {/* Header */}
       <View style={s.header}>
-        <Text style={s.title}>Alerte</Text>
-        {unread > 0 && (
-          <View style={s.badge}>
-            <Text style={s.badgeText}>{unread} necitite</Text>
+        <View>
+          <Text style={s.kicker}>SISTEM</Text>
+          <Text style={s.title}>Alerte</Text>
+        </View>
+        {unreadCount > 0 && (
+          <View style={s.unreadBadge}>
+            <Text style={s.unreadText}>{unreadCount} necitite</Text>
           </View>
         )}
       </View>
 
+      {/* Filter chips */}
+      <View style={s.filterWrap}>
+        <View style={s.filterRow}>
+          {FILTERS.map(f => (
+            <TouchableOpacity
+              key={f.key}
+              style={[s.filterChip, filter === f.key && s.filterChipActive]}
+              onPress={() => setFilter(f.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.filterText, filter === f.key && s.filterTextActive]}>{f.label}</Text>
+              <View style={[s.filterCount, filter === f.key && s.filterCountActive]}>
+                <Text style={[s.filterCountText, filter === f.key && s.filterCountTextActive]}>
+                  {f.count}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
       {isLoading ? (
-        <ActivityIndicator color="#38bdf8" style={{ marginTop: 40 }} />
+        <ActivityIndicator color={T.accent} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
-          data={data ?? []}
-          keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => (
-            <AlertRow item={item} onAck={(id) => ackMutation.mutate(id)} />
-          )}
+          data={filtered}
+          keyExtractor={item => String(item.id)}
           contentContainerStyle={s.list}
-          onRefresh={refetch}
-          refreshing={false}
+          renderItem={({ item, index }) => (
+            <AlertRow
+              item={item}
+              isLast={index === filtered.length - 1}
+              onAck={() => ackMutation.mutate(item.id)}
+            />
+          )}
           ListEmptyComponent={
             <Text style={s.empty}>Nicio alertă. Sistemul funcționează normal.</Text>
           }
@@ -107,40 +122,138 @@ export default function AlertsScreen() {
   );
 }
 
+function AlertRow({
+  item, isLast, onAck,
+}: { item: AlertItem; isLast: boolean; onAck: () => void }) {
+  const meta = ALERT_META[item.alertType] ?? { title: item.alertType, icon: '●' };
+  const c    = SEV_COLOR[item.severity] ?? T.text3;
+  const details = item.details
+    ? Object.entries(item.details).map(([k, v]) => `${k}: ${v}`).join(' · ')
+    : null;
+
+  return (
+    <View style={[ar.wrap, item.acknowledged && ar.acked]}>
+      {/* Timeline dot */}
+      <View style={[ar.timelineDot, { borderColor: c, shadowColor: item.acknowledged ? 'transparent' : c }]} />
+      {/* Vertical line */}
+      {!isLast && <View style={ar.timelineLine} />}
+
+      {/* Card */}
+      <View style={[ar.card, { borderLeftColor: c }]}>
+        <View style={ar.cardHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 15 }}>{meta.icon}</Text>
+            <Text style={[ar.cardTitle, { color: c }]}>{meta.title}</Text>
+          </View>
+          {!item.acknowledged && (
+            <TouchableOpacity style={ar.ackBtn} onPress={onAck} activeOpacity={0.7}>
+              <Text style={ar.ackIcon}>✓</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <Text style={ar.meta}>
+          {item.location?.toUpperCase()} · {new Date(item.time).toLocaleString('ro-RO')}
+        </Text>
+        {details && <Text style={ar.details}>{details}</Text>}
+      </View>
+    </View>
+  );
+}
+
+const ar = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    gap: 16,
+    paddingBottom: 14,
+    position: 'relative',
+  },
+  acked: { opacity: 0.5 },
+  timelineDot: {
+    width: 16, height: 16, borderRadius: 8,
+    backgroundColor: T.bg,
+    borderWidth: 2,
+    marginTop: 10,
+    flexShrink: 0,
+    zIndex: 1,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  timelineLine: {
+    position: 'absolute',
+    left: 7, top: 26, bottom: 0,
+    width: 1, backgroundColor: T.borderStrong,
+  },
+  card: {
+    flex: 1,
+    backgroundColor: T.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: T.border,
+    borderLeftWidth: 3,
+    padding: 12,
+    ...T.shadow,
+  },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  cardTitle: { fontSize: 13.5, fontWeight: '600', letterSpacing: -0.1 },
+  meta: { fontFamily: 'Courier New', fontSize: 10.5, color: T.text3, letterSpacing: 0.3, marginTop: 6 },
+  details: { fontFamily: 'Courier New', fontSize: 10.5, color: T.text2, marginTop: 6, letterSpacing: 0.2 },
+  ackBtn: {
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: T.successSoft,
+    borderWidth: 1, borderColor: T.successLine,
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  ackIcon: { fontSize: 13, color: T.success, fontWeight: '700' },
+});
+
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
+  root: { flex: 1, backgroundColor: T.bg },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: 12,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 22,
+    paddingTop: 60,
+    paddingBottom: 14,
   },
-  title: { fontSize: 24, fontWeight: '700', color: '#f1f5f9' },
-  badge: { backgroundColor: '#7f1d1d', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
-  badgeText: { color: '#fca5a5', fontSize: 12, fontWeight: '600' },
-  list: { padding: 16 },
-  row: {
+  kicker: { fontFamily: 'Courier New', fontSize: 11, color: T.text3, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 4 },
+  title: { fontSize: 30, fontWeight: '600', color: T.text, letterSpacing: -0.8 },
+  unreadBadge: {
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: T.dangerSoft,
+    borderWidth: 1, borderColor: T.dangerLine,
+    marginTop: 8,
+  },
+  unreadText: { fontFamily: 'Courier New', fontSize: 11, fontWeight: '600', color: T.dangerHi },
+
+  filterWrap: { paddingHorizontal: 18, marginBottom: 14 },
+  filterRow: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
+    backgroundColor: T.surface,
     borderRadius: 12,
-    marginBottom: 10,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#334155',
+    borderWidth: 1, borderColor: T.border,
+    padding: 4, gap: 4,
   },
-  rowAcked: { opacity: 0.5 },
-  severityBar: { width: 4 },
-  rowContent: { flex: 1, padding: 14 },
-  alertLabel: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
-  alertMeta: { color: '#64748b', fontSize: 12, marginBottom: 2 },
-  alertDetails: { color: '#94a3b8', fontSize: 12, marginTop: 4 },
-  ackBtn: {
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    backgroundColor: '#14532d20',
+  filterChip: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 8, borderRadius: 8,
   },
-  ackBtnText: { color: '#22c55e', fontSize: 20, fontWeight: '700' },
-  empty: { color: '#475569', textAlign: 'center', marginTop: 60, fontSize: 15 },
+  filterChipActive: { backgroundColor: T.surface3 },
+  filterText: { fontSize: 12.5, fontWeight: '500', color: T.text2 },
+  filterTextActive: { color: T.text, fontWeight: '600' },
+  filterCount: {
+    paddingHorizontal: 6, paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: T.surface2,
+  },
+  filterCountActive: { backgroundColor: T.accentSoft },
+  filterCountText: { fontFamily: 'Courier New', fontSize: 10, fontWeight: '600', color: T.text3 },
+  filterCountTextActive: { color: T.accent },
+
+  list: { paddingHorizontal: 22, paddingBottom: 110 },
+  empty: { color: T.text4, textAlign: 'center', marginTop: 60, fontSize: 15, paddingHorizontal: 20 },
 });

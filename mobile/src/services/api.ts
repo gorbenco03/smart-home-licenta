@@ -12,11 +12,11 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
-// 401 → logout automat
+// 401 → logout automat (doar dacă există un token — evită loop la login)
 client.interceptors.response.use(
   (r) => r,
   (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && useAppStore.getState().token) {
       useAppStore.getState().logout();
     }
     return Promise.reject(error);

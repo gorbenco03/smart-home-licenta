@@ -1,14 +1,24 @@
 import React, { useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  RefreshControl, ActivityIndicator,
+  RefreshControl, TouchableOpacity,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { useAppStore } from '../store';
-import { SensorCard } from '../components/SensorCard';
+import { T } from '../theme';
+import { Dot, Ring, Sparkline, StatusPill, GasBar } from '../components/ui';
+import { SensorReading } from '../types';
 
-const NODE_ORDER = ['esp32_node_a', 'esp32_node_b'];
+// Static sparkline history shapes (will animate via WS updates in future)
+const TREND_TEMP   = [20.5, 21.0, 21.4, 21.8, 22.0, 22.1];
+const TREND_HUMID  = [58, 57, 56, 55, 54, 54];
+const TREND_LUX    = [180, 220, 280, 300, 310, 312];
+const TREND_GAS_OK = [148, 150, 152, 149, 148, 148];
+
+function now() {
+  return new Date().toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
 
 export default function DashboardScreen() {
   const latestReadings = useAppStore((s) => s.latestReadings);
@@ -16,7 +26,6 @@ export default function DashboardScreen() {
   const setLatest      = useAppStore((s) => s.setLatestReading);
   const connected      = useAppStore((s) => s.connected);
 
-  // Fetch inițial — WebSocket-ul ține restul live
   const { data: nodes, isLoading, refetch } = useQuery({
     queryKey: ['nodes'],
     queryFn: api.sensors.nodes,
@@ -27,79 +36,300 @@ export default function DashboardScreen() {
     queryKey: ['latest'],
     queryFn: api.sensors.latest,
     staleTime: 10_000,
-    onSuccess: (data) => {
-      Object.values(data).forEach((r) => setLatest(r));
-    },
   });
 
-  function handleRefresh() {
-    refetch();
-    refetchLatest();
-  }
+  useEffect(() => {
+    if (latest) Object.values(latest).forEach((r) => setLatest(r));
+  }, [latest]);
 
-  const sortedNodes = nodes
-    ? [...nodes].sort((a, b) =>
-        NODE_ORDER.indexOf(a.nodeId) - NODE_ORDER.indexOf(b.nodeId),
-      )
-    : [];
+  function handleRefresh() { refetch(); refetchLatest(); }
+
+  // Aggregate stats across all nodes for the Hero card
+  const allReadings = Object.values(latestReadings);
+  const avgTemp  = allReadings.length ? allReadings.reduce((s, r) => s + (r.temperature ?? 0), 0) / allReadings.length : null;
+  const avgHumid = allReadings.length ? allReadings.reduce((s, r) => s + (r.humidity ?? 0), 0) / allReadings.length : null;
+  const avgLux   = allReadings.length ? allReadings.reduce((s, r) => s + (r.lightLux ?? 0), 0) / allReadings.length : null;
+  const maxGas   = allReadings.length ? Math.max(...allReadings.map(r => r.gasLevel ?? 0)) : null;
+  const anyGas   = allReadings.some(r => r.gasAlert);
+  const onlineCount = (nodes ?? []).filter(n => nodeStatus[n.nodeId] ?? n.online).length;
+
+  // Safety score: 100 - deductions
+  const safetyScore = anyGas ? Math.round(100 - ((maxGas! - 350) / 650) * 60) : 92;
+
+  const sortedNodes = nodes ? [...nodes].sort((a, b) => a.nodeId.localeCompare(b.nodeId)) : [];
 
   return (
-    <View style={s.container}>
-      <View style={s.header}>
-        <Text style={s.title}>Dashboard</Text>
-        <View style={[s.wsBadge, connected ? s.wsOn : s.wsOff]}>
-          <Text style={s.wsBadgeText}>{connected ? '● live' : '○ reconectare…'}</Text>
-        </View>
-      </View>
-
-      {isLoading && (
-        <ActivityIndicator color="#38bdf8" style={{ marginTop: 40 }} />
-      )}
-
+    <View style={s.root}>
       <ScrollView
         contentContainerStyle={s.content}
         refreshControl={
-          <RefreshControl refreshing={false} onRefresh={handleRefresh} tintColor="#38bdf8" />
+          <RefreshControl refreshing={false} onRefresh={handleRefresh} tintColor={T.accent} />
         }
       >
-        {sortedNodes.map((node) => (
-          <SensorCard
-            key={node.nodeId}
-            nodeId={node.nodeId}
-            location={node.location}
-            reading={latestReadings[node.nodeId] ?? null}
-            online={nodeStatus[node.nodeId] ?? node.online}
-          />
-        ))}
+        {/* ── HEADER ── */}
+        <View style={s.header}>
+          <View>
+            <Text style={s.kicker}>ACASĂ</Text>
+            <Text style={s.title}>Dashboard</Text>
+          </View>
+          <StatusPill kind={connected ? 'live' : 'reconn'} />
+        </View>
 
-        {sortedNodes.length === 0 && !isLoading && (
-          <Text style={s.empty}>
-            Niciun nod găsit.{'\n'}Verifică că backend-ul rulează.
-          </Text>
-        )}
+        {/* ── HERO CARD ── */}
+        <View style={[s.heroCard, anyGas && s.heroCardAlert]}>
+          {/* Glow accent */}
+          <View style={[s.heroGlow, anyGas && s.heroGlowAlert]} pointerEvents="none" />
+
+          <View style={s.heroTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.heroKicker}>STATUS GENERAL</Text>
+              <Text style={[s.heroTitle, anyGas && { color: T.dangerHi }]}>
+                {anyGas ? 'Atenție · Gaz' : 'Totul în regulă'}
+              </Text>
+              <Text style={s.heroSub}>
+                {anyGas
+                  ? `Senzor MQ-2 · ${maxGas} ADC`
+                  : `${onlineCount} din ${(nodes ?? []).length} noduri conectate`}
+              </Text>
+            </View>
+            <Ring
+              value={anyGas ? (maxGas ?? 0) : safetyScore}
+              max={anyGas ? 1023 : 100}
+              size={88}
+              stroke={7}
+              color={anyGas ? T.danger : T.success}
+              track="rgba(255,255,255,0.06)"
+              label={anyGas ? 'GAZ' : 'SAFE'}
+              unit={anyGas ? '' : '%'}
+            />
+          </View>
+
+          {/* Mini stats row */}
+          <View style={s.miniRow}>
+            <MiniStat
+              label="TEMP"
+              value={avgTemp != null ? avgTemp.toFixed(1) : '—'}
+              unit="°C"
+              trend={TREND_TEMP}
+              color={T.warning}
+            />
+            <MiniStat
+              label="UMID"
+              value={avgHumid != null ? Math.round(avgHumid).toString() : '—'}
+              unit="%"
+              trend={TREND_HUMID}
+              color={T.info}
+            />
+            <MiniStat
+              label="LUX"
+              value={avgLux != null ? Math.round(avgLux).toString() : '—'}
+              unit=""
+              trend={TREND_LUX}
+              color={T.violet}
+            />
+            <MiniStat
+              label="GAZ"
+              value={maxGas != null ? maxGas.toString() : '—'}
+              unit="ADC"
+              trend={anyGas ? [150, 200, 280, 350, 400, maxGas ?? 400] : TREND_GAS_OK}
+              color={anyGas ? T.danger : T.success}
+            />
+          </View>
+        </View>
+
+        {/* ── CAMERAS HEADER ── */}
+        <View style={s.sectionRow}>
+          <Text style={s.sectionLabel}>CAMERELE</Text>
+          <Text style={s.sectionMeta}>{onlineCount} din {(nodes ?? []).length} online</Text>
+        </View>
+
+        {/* ── ROOM TILES 2-column ── */}
+        <View style={s.tilesGrid}>
+          {sortedNodes.map((node) => {
+            const reading = latestReadings[node.nodeId] ?? null;
+            const online = nodeStatus[node.nodeId] ?? node.online;
+            return (
+              <RoomTile
+                key={node.nodeId}
+                name={node.location}
+                nodeId={node.nodeId}
+                reading={reading}
+                online={online}
+              />
+            );
+          })}
+          {sortedNodes.length === 0 && !isLoading && (
+            <Text style={s.empty}>Niciun nod găsit.{'\n'}Verifică că backend-ul rulează.</Text>
+          )}
+        </View>
       </ScrollView>
     </View>
   );
 }
 
+/* ── MINI STAT ───────────────────────────────────── */
+function MiniStat({
+  label, value, unit, trend, color,
+}: { label: string; value: string; unit: string; trend: number[]; color: string }) {
+  return (
+    <View style={ms.wrap}>
+      <Text style={ms.label}>{label}</Text>
+      <View style={ms.valRow}>
+        <Text style={ms.val}>{value}</Text>
+        {unit ? <Text style={ms.unit}>{unit}</Text> : null}
+      </View>
+      <Sparkline data={trend} width={62} height={16} color={color} strokeWidth={1.4} />
+    </View>
+  );
+}
+
+const ms = StyleSheet.create({
+  wrap: { flex: 1, paddingHorizontal: 4, paddingVertical: 2 },
+  label: { fontFamily: 'Courier New', fontSize: 9.5, color: T.text3, letterSpacing: 1, marginBottom: 4 },
+  valRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, marginBottom: 4 },
+  val: { fontFamily: 'Courier New', fontSize: 17, fontWeight: '500', color: T.text, letterSpacing: -0.5 },
+  unit: { fontFamily: 'Courier New', fontSize: 10, color: T.text3, paddingBottom: 2 },
+});
+
+/* ── ROOM TILE ───────────────────────────────────── */
+function RoomTile({
+  name, nodeId, reading, online,
+}: { name: string; nodeId: string; reading: SensorReading | null; online: boolean }) {
+  const alert = reading?.gasAlert ?? false;
+  return (
+    <View style={[rt.card, !online && rt.offline]}>
+      {alert && <View style={rt.alertStripe} />}
+      <View style={rt.header}>
+        <View style={{ flex: 1 }}>
+          <Text style={rt.name}>{name.charAt(0).toUpperCase() + name.slice(1)}</Text>
+          <Text style={rt.nodeId}>{nodeId}</Text>
+        </View>
+        <Dot color={online ? T.success : T.text4} size={7} />
+      </View>
+
+      {reading ? (
+        <>
+          <View style={rt.tempRow}>
+            <Text style={[rt.temp, alert && { color: T.danger }]}>
+              {reading.temperature?.toFixed(1) ?? '—'}
+            </Text>
+            <Text style={rt.tempUnit}>°C</Text>
+          </View>
+          <View style={rt.meta}>
+            <Text style={rt.metaText}>{reading.humidity?.toFixed(0) ?? '—'}% umid.</Text>
+            <View style={rt.dot2} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Dot
+                color={reading.motion ? T.accent : T.text4}
+                size={5}
+              />
+              <Text style={[rt.metaText, { color: reading.motion ? T.accent : T.text3 }]}>
+                {reading.motion ? 'mișcare' : 'liniște'}
+              </Text>
+            </View>
+          </View>
+          <Text style={rt.ts}>
+            {nodeId} · {new Date(reading.time).toLocaleTimeString('ro-RO')}
+          </Text>
+        </>
+      ) : (
+        <Text style={rt.noData}>Aștept date…</Text>
+      )}
+    </View>
+  );
+}
+
+const rt = StyleSheet.create({
+  card: {
+    flex: 1,
+    backgroundColor: T.surface,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: T.border,
+    padding: 14,
+    overflow: 'hidden',
+    ...T.shadow,
+  },
+  offline: { opacity: 0.5 },
+  alertStripe: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: T.danger },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  name: { fontSize: 15, fontWeight: '600', color: T.text, letterSpacing: -0.2 },
+  nodeId: { fontSize: 10, color: T.text3, marginTop: 2, fontFamily: 'Courier New' },
+  tempRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, marginBottom: 6 },
+  temp: { fontFamily: 'Courier New', fontSize: 28, fontWeight: '400', color: T.text, letterSpacing: -1, lineHeight: 30 },
+  tempUnit: { fontFamily: 'Courier New', fontSize: 13, color: T.text3, paddingBottom: 3 },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  dot2: { width: 2, height: 2, borderRadius: 1, backgroundColor: T.text4 },
+  metaText: { fontFamily: 'Courier New', fontSize: 11, color: T.text2 },
+  ts: { fontFamily: 'Courier New', fontSize: 9.5, color: T.text4, letterSpacing: 0.2 },
+  noData: { fontFamily: 'Courier New', fontSize: 12, color: T.text3, textAlign: 'center', paddingVertical: 16 },
+});
+
 const s = StyleSheet.create({
-  container:  { flex: 1, backgroundColor: '#0f172a' },
+  root: { flex: 1, backgroundColor: T.bg },
+  content: { paddingBottom: 110 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: 12,
+    paddingHorizontal: 22,
+    paddingTop: 60,
+    paddingBottom: 16,
   },
-  title: { fontSize: 24, fontWeight: '700', color: '#f1f5f9' },
-  wsBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  wsOn:    { backgroundColor: '#14532d' },
-  wsOff:   { backgroundColor: '#431407' },
-  wsBadgeText: { fontSize: 12, color: '#86efac', fontWeight: '600' },
-  content: { padding: 16 },
-  empty: {
-    color: '#475569', textAlign: 'center',
-    fontSize: 15, marginTop: 60, lineHeight: 24,
+  kicker: {
+    fontFamily: 'Courier New',
+    fontSize: 11,
+    color: T.text3,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
+  title: { fontSize: 30, fontWeight: '600', color: T.text, letterSpacing: -0.8 },
+
+  // Hero card
+  heroCard: {
+    marginHorizontal: 18,
+    marginBottom: 14,
+    backgroundColor: T.surface,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: T.border,
+    padding: 20,
+    overflow: 'hidden',
+    ...T.shadow,
+  },
+  heroCardAlert: { borderColor: T.dangerLine },
+  heroGlow: {
+    position: 'absolute', top: -60, right: -60,
+    width: 200, height: 200, borderRadius: 100,
+    backgroundColor: 'rgba(251,146,60,0.10)',
+  },
+  heroGlowAlert: { backgroundColor: 'rgba(219,106,94,0.14)' },
+  heroTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 },
+  heroKicker: { fontFamily: 'Courier New', fontSize: 11, color: T.text3, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 6 },
+  heroTitle: { fontSize: 26, fontWeight: '600', letterSpacing: -0.6, color: T.text, marginBottom: 4 },
+  heroSub: { fontSize: 13, color: T.text2, maxWidth: 200 },
+
+  miniRow: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: T.border,
+    paddingTop: 16,
+    gap: 4,
+  },
+
+  // Section
+  sectionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    paddingHorizontal: 22,
+    paddingBottom: 10,
+    paddingTop: 6,
+  },
+  sectionLabel: { fontFamily: 'Courier New', fontSize: 11, color: T.text3, letterSpacing: 1.2, textTransform: 'uppercase' },
+  sectionMeta:  { fontFamily: 'Courier New', fontSize: 11, color: T.text3 },
+
+  tilesGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 18, gap: 10 },
+  empty: { color: T.text4, textAlign: 'center', fontSize: 14, marginTop: 40, lineHeight: 22, width: '100%' },
 });

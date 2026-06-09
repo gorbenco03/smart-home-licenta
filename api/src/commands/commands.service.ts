@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 export interface NodeCommand {
-  action: 'relay_on' | 'relay_off' | 'relay_toggle' | 'buzzer_beep' | 'all_off';
+  action: 'relay_on' | 'relay_off' | 'relay_toggle' | 'buzzer_beep' | 'all_off' | 'servo_move';
   relay?: number;
   count?: number;
+  servoAngle?: number;  // 0–180 grade (pentru servo_move)
 }
 
 @Injectable()

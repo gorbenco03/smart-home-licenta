@@ -4,9 +4,10 @@ import {
   TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { LineChart } from 'react-native-gifted-charts';
+import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Line as SvgLine, Circle, G, Rect, Text as SvgText } from 'react-native-svg';
 import { api } from '../services/api';
 import { SensorReading } from '../types';
+import { T } from '../theme';
 
 const NODES = [
   { id: 'esp32_node_a', label: 'Living' },
@@ -14,9 +15,9 @@ const NODES = [
 ];
 
 const METRICS: Array<{ key: keyof SensorReading; label: string; color: string; unit: string }> = [
-  { key: 'temperature', label: 'Temperatură', color: '#f59e0b', unit: '°C' },
-  { key: 'humidity',    label: 'Umiditate',   color: '#38bdf8', unit: '%' },
-  { key: 'lightLux',   label: 'Lumină',       color: '#a78bfa', unit: 'lux' },
+  { key: 'temperature', label: 'Temperatură', color: T.warning, unit: '°C' },
+  { key: 'humidity',    label: 'Umiditate',   color: T.info,    unit: '%' },
+  { key: 'lightLux',   label: 'Lumină',       color: T.violet,  unit: 'lux' },
 ];
 
 const RANGES = [
@@ -40,106 +41,72 @@ export default function HistoryScreen() {
     refetchInterval: 30_000,
   });
 
-  const chartData = (data ?? []).map((r) => ({
-    value: Number(r[metric.key] ?? 0),
-    label: '',
-  }));
-
-  const values = chartData.map((d) => d.value);
+  const values = (data ?? []).map((r) => Number(r[metric.key] ?? 0));
   const minV   = values.length ? Math.min(...values) : 0;
   const maxV   = values.length ? Math.max(...values) : 100;
+  const avgV   = values.length ? values.reduce((s, v) => s + v, 0) / values.length : null;
   const lastV  = values.length ? values[values.length - 1] : null;
 
   return (
-    <View style={s.container}>
-      <Text style={s.title}>Istoric</Text>
-
-      {/* Selector nod */}
-      <View style={s.row}>
-        {NODES.map((n) => (
-          <TouchableOpacity
-            key={n.id}
-            style={[s.chip, nodeId === n.id && s.chipActive]}
-            onPress={() => setNodeId(n.id)}
-          >
-            <Text style={[s.chipText, nodeId === n.id && s.chipTextActive]}>{n.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Selector interval */}
-      <View style={s.row}>
-        {RANGES.map((r) => (
-          <TouchableOpacity
-            key={r.label}
-            style={[s.chip, range.label === r.label && s.chipActive]}
-            onPress={() => setRange(r)}
-          >
-            <Text style={[s.chipText, range.label === r.label && s.chipTextActive]}>{r.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Selector metric */}
-      <View style={s.row}>
-        {METRICS.map((m) => (
-          <TouchableOpacity
-            key={m.key}
-            style={[s.chip, metric.key === m.key && { ...s.chipActive, borderColor: m.color }]}
-            onPress={() => setMetric(m)}
-          >
-            <Text style={[s.chipText, metric.key === m.key && { color: m.color }]}>{m.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
+    <View style={s.root}>
       <ScrollView contentContainerStyle={s.content}>
+        {/* Header */}
+        <View style={s.header}>
+          <Text style={s.kicker}>SENZORI</Text>
+          <Text style={s.title}>Istoric</Text>
+        </View>
+
+        {/* Selectors */}
+        <View style={s.selectors}>
+          <ChipRow
+            label="NOD"
+            options={NODES.map(n => n.label)}
+            activeIdx={NODES.findIndex(n => n.id === nodeId)}
+            onSelect={i => setNodeId(NODES[i].id)}
+          />
+          <ChipRow
+            label="INTERVAL"
+            options={RANGES.map(r => r.label)}
+            activeIdx={RANGES.indexOf(range)}
+            onSelect={i => setRange(RANGES[i])}
+            mono
+          />
+          <ChipRow
+            label="METRICĂ"
+            options={METRICS.map(m => m.label)}
+            activeIdx={METRICS.indexOf(metric)}
+            onSelect={i => setMetric(METRICS[i])}
+            colored
+            colors={METRICS.map(m => m.color)}
+          />
+        </View>
+
+        {/* Stat tiles */}
+        <View style={s.statRow}>
+          <StatTile label="CURENT" value={lastV?.toFixed(1) ?? '—'} unit={metric.unit} color={metric.color} big />
+          <StatTile label="MIN"    value={values.length ? minV.toFixed(1) : '—'} unit={metric.unit} />
+          <StatTile label="MAX"    value={values.length ? maxV.toFixed(1) : '—'} unit={metric.unit} />
+          <StatTile label="MED"    value={avgV != null ? avgV.toFixed(1) : '—'} unit={metric.unit} />
+        </View>
+
+        {/* Chart */}
         {isLoading ? (
-          <ActivityIndicator color="#38bdf8" style={{ marginTop: 40 }} />
-        ) : chartData.length > 1 ? (
-          <>
-            <View style={s.statRow}>
-              <View style={s.stat}>
-                <Text style={s.statLabel}>Curent</Text>
-                <Text style={[s.statValue, { color: metric.color }]}>
-                  {lastV?.toFixed(1)} {metric.unit}
-                </Text>
-              </View>
-              <View style={s.stat}>
-                <Text style={s.statLabel}>Min</Text>
-                <Text style={s.statValue}>{minV.toFixed(1)} {metric.unit}</Text>
-              </View>
-              <View style={s.stat}>
-                <Text style={s.statLabel}>Max</Text>
-                <Text style={s.statValue}>{maxV.toFixed(1)} {metric.unit}</Text>
+          <ActivityIndicator color={T.accent} style={{ marginTop: 40 }} />
+        ) : values.length > 1 ? (
+          <View style={s.chartCard}>
+            <View style={s.chartHeader}>
+              <Text style={s.chartTitle}>{metric.label} · {metric.unit}</Text>
+              <View style={s.legend}>
+                <LegendSwatch color={metric.color} label="azi" />
               </View>
             </View>
-
-            <LineChart
-              data={chartData}
-              color={metric.color}
-              thickness={2}
-              dataPointsColor={metric.color}
-              dataPointsRadius={0}
-              startFillColor={metric.color}
-              endFillColor="#0f172a"
-              startOpacity={0.3}
-              endOpacity={0}
-              areaChart
-              hideDataPoints
-              hideYAxisText={false}
-              yAxisColor="#334155"
-              xAxisColor="#334155"
-              rulesColor="#1e293b"
-              yAxisTextStyle={{ color: '#64748b', fontSize: 10 }}
-              backgroundColor="#0f172a"
-              width={330}
-              height={220}
-              noOfSections={4}
-              maxValue={Math.ceil(maxV * 1.1)}
-              minValue={Math.floor(minV * 0.9)}
-            />
-          </>
+            <BigChart values={values} color={metric.color} />
+            <View style={s.xAxis}>
+              {['início', '', '', '', 'agora'].map((t, i) => (
+                <Text key={i} style={s.xLabel}>{t}</Text>
+              ))}
+            </View>
+          </View>
         ) : (
           <Text style={s.empty}>Insuficiente date pentru intervalul selectat.</Text>
         )}
@@ -148,24 +115,207 @@ export default function HistoryScreen() {
   );
 }
 
+/* ── CHIP ROW ──────────────────────────────────────── */
+function ChipRow({
+  label, options, activeIdx, onSelect, mono, colored, colors,
+}: {
+  label: string;
+  options: string[];
+  activeIdx: number;
+  onSelect: (i: number) => void;
+  mono?: boolean;
+  colored?: boolean;
+  colors?: string[];
+}) {
+  return (
+    <View style={cr.row}>
+      <Text style={cr.label}>{label}</Text>
+      <View style={cr.pills}>
+        {options.map((o, i) => {
+          const on = i === activeIdx;
+          const c  = colored && colors ? colors[i] : null;
+          return (
+            <TouchableOpacity
+              key={o}
+              style={[
+                cr.pill,
+                on && (c ? { backgroundColor: c + '22', borderColor: c + '88' } : cr.pillActive),
+              ]}
+              onPress={() => onSelect(i)}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                cr.pillText,
+                { fontFamily: mono ? 'Courier New' : undefined },
+                on && { color: c ?? T.text, fontWeight: '600' },
+              ]}>
+                {o}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const cr = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  label: { fontFamily: 'Courier New', fontSize: 9.5, color: T.text3, letterSpacing: 1.2, width: 52 },
+  pills: {
+    flex: 1, flexDirection: 'row',
+    backgroundColor: T.surface,
+    borderRadius: 14, padding: 4,
+    borderWidth: 1, borderColor: T.border,
+    gap: 4,
+  },
+  pill: {
+    flex: 1, alignItems: 'center', paddingVertical: 8,
+    borderRadius: 10, borderWidth: 1, borderColor: 'transparent',
+  },
+  pillActive: { backgroundColor: T.surface3 },
+  pillText: { fontSize: 12.5, fontWeight: '500', color: T.text2 },
+});
+
+/* ── STAT TILE ─────────────────────────────────────── */
+function StatTile({ label, value, unit, color = T.text2, big }:
+  { label: string; value: string; unit: string; color?: string; big?: boolean }) {
+  return (
+    <View style={st.tile}>
+      <Text style={st.label}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 1, marginTop: 4 }}>
+        <Text style={[st.val, big && { fontSize: 19, color }]}>{value}</Text>
+        <Text style={st.unit}>{unit}</Text>
+      </View>
+    </View>
+  );
+}
+
+const st = StyleSheet.create({
+  tile: {
+    flex: 1, backgroundColor: T.surface,
+    borderRadius: 14, padding: 10,
+    borderWidth: 1, borderColor: T.border,
+  },
+  label: { fontFamily: 'Courier New', fontSize: 9, color: T.text3, letterSpacing: 1.2 },
+  val: { fontFamily: 'Courier New', fontSize: 16, fontWeight: '500', color: T.text, letterSpacing: -0.5 },
+  unit: { fontFamily: 'Courier New', fontSize: 9.5, color: T.text3, paddingBottom: 2 },
+});
+
+/* ── LEGEND ────────────────────────────────────────── */
+function LegendSwatch({ color, label }: { color: string; label: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <View style={{ width: 14, height: 2, borderRadius: 2, backgroundColor: color }} />
+      <Text style={{ fontFamily: 'Courier New', fontSize: 10, color: T.text3, letterSpacing: 0.4 }}>{label}</Text>
+    </View>
+  );
+}
+
+/* ── BIG CHART (SVG area chart) ───────────────────── */
+function BigChart({ values, color }: { values: number[]; color: string }) {
+  const W = 340, H = 180;
+  const PAD = { l: 28, r: 10, t: 14, b: 8 };
+  const min = Math.min(...values) - 0.5;
+  const max = Math.max(...values) + 0.5;
+  const range = max - min || 1;
+
+  const px = (i: number) => PAD.l + (i / (values.length - 1)) * (W - PAD.l - PAD.r);
+  const py = (v: number) => PAD.t + (1 - (v - min) / range) * (H - PAD.t - PAD.b);
+
+  const pts = values.map((v, i) => [px(i), py(v)] as [number, number]);
+  const d  = pts.map(([x, y], i) => (i === 0 ? `M${x},${y}` : `L${x},${y}`)).join(' ');
+  const fd = `${d} L${pts[pts.length - 1][0]},${H - PAD.b} L${pts[0][0]},${H - PAD.b} Z`;
+
+  const lastX = pts[pts.length - 1][0];
+  const lastY = pts[pts.length - 1][1];
+
+  const ticks = [min, min + range * 0.33, min + range * 0.66, max];
+
+  return (
+    <Svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'flex' }}>
+      <Defs>
+        <SvgGradient id="area" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor={color} stopOpacity="0.32" />
+          <Stop offset="100%" stopColor={color} stopOpacity="0" />
+        </SvgGradient>
+      </Defs>
+
+      {ticks.map((t, i) => (
+        <G key={i}>
+          <SvgLine
+            x1={PAD.l} x2={W - PAD.r}
+            y1={py(t)} y2={py(t)}
+            stroke={T.border}
+            strokeWidth="1"
+            strokeDasharray={i === 0 || i === ticks.length - 1 ? '0' : '2 4'}
+          />
+          <SvgText
+            x={PAD.l - 6} y={py(t) + 3}
+            textAnchor="end"
+            fontSize="9"
+            fill={T.text3}
+            fontFamily="Courier New"
+          >
+            {t.toFixed(0)}
+          </SvgText>
+        </G>
+      ))}
+
+      <Path d={fd} fill="url(#area)" />
+      <Path d={d} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+      {/* Current point */}
+      <Circle cx={lastX} cy={lastY} r="9" fill={color} fillOpacity="0.18" />
+      <Circle cx={lastX} cy={lastY} r="4.5" fill={T.bg} stroke={color} strokeWidth="2" />
+
+      {/* Value bubble */}
+      <Rect
+        x={lastX - 22} y={lastY - 26}
+        width="44" height="18" rx="6"
+        fill={color}
+      />
+      <SvgText
+        x={lastX} y={lastY - 12}
+        textAnchor="middle"
+        fontSize="10.5"
+        fill={T.accentOn}
+        fontFamily="Courier New"
+        fontWeight="600"
+      >
+        {values[values.length - 1].toFixed(1)}
+      </SvgText>
+    </Svg>
+  );
+}
+
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  title: {
-    fontSize: 24, fontWeight: '700', color: '#f1f5f9',
-    paddingHorizontal: 20, paddingTop: 56, paddingBottom: 12,
+  root: { flex: 1, backgroundColor: T.bg },
+  content: { paddingBottom: 110 },
+  header: { paddingHorizontal: 22, paddingTop: 60, paddingBottom: 14 },
+  kicker: { fontFamily: 'Courier New', fontSize: 11, color: T.text3, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 4 },
+  title: { fontSize: 30, fontWeight: '600', color: T.text, letterSpacing: -0.8 },
+  selectors: { paddingHorizontal: 22, marginBottom: 14 },
+  statRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 18, marginBottom: 14 },
+  chartCard: {
+    marginHorizontal: 18,
+    backgroundColor: T.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: T.border,
+    padding: 14,
+    ...T.shadow,
   },
-  row: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 8 },
-  chip: {
-    paddingHorizontal: 14, paddingVertical: 6,
-    borderRadius: 999, borderWidth: 1, borderColor: '#334155',
+  chartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    marginBottom: 8,
   },
-  chipActive:     { backgroundColor: '#0ea5e920', borderColor: '#38bdf8' },
-  chipText:       { color: '#64748b', fontSize: 13 },
-  chipTextActive: { color: '#38bdf8', fontWeight: '600' },
-  content:  { padding: 16 },
-  statRow:  { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 20 },
-  stat:     { alignItems: 'center' },
-  statLabel:{ color: '#64748b', fontSize: 12, marginBottom: 4 },
-  statValue:{ color: '#e2e8f0', fontSize: 18, fontWeight: '700' },
-  empty:    { color: '#475569', textAlign: 'center', marginTop: 60, fontSize: 15 },
+  chartTitle: { fontFamily: 'Courier New', fontSize: 10.5, color: T.text3, letterSpacing: 1.2, textTransform: 'uppercase' },
+  legend: { flexDirection: 'row', gap: 10 },
+  xAxis: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 8 },
+  xLabel: { fontFamily: 'Courier New', fontSize: 10, color: T.text3, letterSpacing: 0.4 },
+  empty: { color: T.text4, textAlign: 'center', marginTop: 60, fontSize: 15, paddingHorizontal: 40 },
 });

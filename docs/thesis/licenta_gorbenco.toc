@@ -1,0 +1,51 @@
+\babel@toc {romanian}{}\relax 
+\contentsline {chapter}{\numberline {1}Introducere}{5}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Contextul și Motivația Proiectului}{5}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Obiectivele Lucrării}{6}{section.1.2}%
+\contentsline {section}{\numberline {1.3}Contribuția Proprie}{7}{section.1.3}%
+\contentsline {section}{\numberline {1.4}Structura Lucrării}{8}{section.1.4}%
+\contentsline {chapter}{\numberline {2}Arhitectura Sistemului}{9}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Viziunea Arhitecturală}{9}{section.2.1}%
+\contentsline {subsection}{\numberline {2.1.1}Principiul Local-First}{9}{subsection.2.1.1}%
+\contentsline {subsection}{\numberline {2.1.2}Confidențialitatea prin Proiectare}{9}{subsection.2.1.2}%
+\contentsline {subsection}{\numberline {2.1.3}Inteligența la Marginea Rețelei față de Inteligența în Cloud}{10}{subsection.2.1.3}%
+\contentsline {section}{\numberline {2.2}Arhitectura pe Straturi}{10}{section.2.2}%
+\contentsline {subsection}{\numberline {2.2.1}Stratul 1 --- Senzori și Actuatori}{11}{subsection.2.2.1}%
+\contentsline {subsection}{\numberline {2.2.2}Stratul 2 --- Noduri ESP32}{12}{subsection.2.2.2}%
+\contentsline {subsection}{\numberline {2.2.3}Stratul 3 --- Gateway Raspberry Pi 3B+}{12}{subsection.2.2.3}%
+\contentsline {subsection}{\numberline {2.2.4}Stratul 4 --- Backend API NestJS}{13}{subsection.2.2.4}%
+\contentsline {subsection}{\numberline {2.2.5}Stratul 5 --- Aplicația Mobilă React Native/Expo}{13}{subsection.2.2.5}%
+\contentsline {section}{\numberline {2.3}Fluxul de Date (End-to-End)}{13}{section.2.3}%
+\contentsline {subsection}{\numberline {2.3.1}Fluxul de Monitorizare (Senzori $\rightarrow $ Mobil)}{13}{subsection.2.3.1}%
+\contentsline {subsection}{\numberline {2.3.2}Fluxul de Comandă (Mobil $\rightarrow $ Actuator)}{14}{subsection.2.3.2}%
+\contentsline {subsection}{\numberline {2.3.3}Fluxul de Alertare (Anomalie ML $\rightarrow $ Notificare)}{14}{subsection.2.3.3}%
+\contentsline {section}{\numberline {2.4}Alegerea Tehnologiilor}{14}{section.2.4}%
+\contentsline {subsection}{\numberline {2.4.1}NestJS față de alternativele backend}{14}{subsection.2.4.1}%
+\contentsline {subsection}{\numberline {2.4.2}React Native față de Flutter}{15}{subsection.2.4.2}%
+\contentsline {subsection}{\numberline {2.4.3}MQTT față de HTTP polling}{15}{subsection.2.4.3}%
+\contentsline {subsection}{\numberline {2.4.4}TimescaleDB față de PostgreSQL simplu}{15}{subsection.2.4.4}%
+\contentsline {subsection}{\numberline {2.4.5}Isolation Forest față de reguli cu praguri fixe}{16}{subsection.2.4.5}%
+\contentsline {section}{\numberline {2.5}Considerații de Securitate}{16}{section.2.5}%
+\contentsline {chapter}{\numberline {3}Implementarea Hardware}{18}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Prezentare Generală}{18}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Microcontrolere Utilizate}{18}{section.3.2}%
+\contentsline {subsection}{\numberline {3.2.1}ESP32 WROOM-32 --- Nodul de Senzori}{18}{subsection.3.2.1}%
+\contentsline {subsection}{\numberline {3.2.2}ESP32-CAM AI-Thinker --- Nodul Cameră}{19}{subsection.3.2.2}%
+\contentsline {section}{\numberline {3.3}Senzori Utilizați}{19}{section.3.3}%
+\contentsline {subsection}{\numberline {3.3.1}DHT22 --- Temperatură și Umiditate}{19}{subsection.3.3.1}%
+\contentsline {subsection}{\numberline {3.3.2}MQ-2 --- Gaz și Fum}{20}{subsection.3.3.2}%
+\contentsline {subsection}{\numberline {3.3.3}HC-SR501 --- Mișcare PIR}{20}{subsection.3.3.3}%
+\contentsline {subsection}{\numberline {3.3.4}BH1750 --- Lumină Ambientală}{20}{subsection.3.3.4}%
+\contentsline {section}{\numberline {3.4}Actuatori Utilizați}{20}{section.3.4}%
+\contentsline {subsection}{\numberline {3.4.1}Modulul Releu 4 Canale}{20}{subsection.3.4.1}%
+\contentsline {subsection}{\numberline {3.4.2}Buzzer Activ}{21}{subsection.3.4.2}%
+\contentsline {subsection}{\numberline {3.4.3}Servomotorul SG90 --- Control Perdele}{21}{subsection.3.4.3}%
+\contentsline {section}{\numberline {3.5}Schema de Conexiuni}{21}{section.3.5}%
+\contentsline {section}{\numberline {3.6}Alimentarea Sistemului}{22}{section.3.6}%
+\contentsline {section}{\numberline {3.7}Nodul Cameră ESP32-CAM --- Programare și Configurare}{23}{section.3.7}%
+\contentsline {section}{\numberline {3.8}Considerații Practice pentru Breadboard}{23}{section.3.8}%
+\contentsline {chapter}{\numberline {4}Implementarea Software}{25}{chapter.4}%
+\contentsline {chapter}{\numberline {5}Detecția Anomaliilor prin Machine Learning}{26}{chapter.5}%
+\contentsline {chapter}{\numberline {6}Testare și Evaluare}{27}{chapter.6}%
+\contentsline {chapter}{Concluzii}{28}{chapter*.4}%
+\contentsline {chapter}{Bibliografie}{29}{chapter*.5}%

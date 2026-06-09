@@ -1,8 +1,6 @@
 import { create } from 'zustand';
-import { MMKV } from 'react-native-mmkv';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SensorReading, AlertItem } from '../types';
-
-const storage = new MMKV({ id: 'smarthome' });
 
 interface AppStore {
   // Auth
@@ -10,6 +8,7 @@ interface AppStore {
   user: { id: number; username: string } | null;
   setAuth: (token: string, user: { id: number; username: string }) => void;
   logout: () => void;
+  loadToken: () => Promise<void>;   // apelat la startup
 
   // WebSocket
   connected: boolean;
@@ -33,20 +32,31 @@ interface AppStore {
 }
 
 export const useAppStore = create<AppStore>((set) => ({
-  // Restore token din MMKV persistent storage
-  token: storage.getString('token') ?? null,
-  user:  storage.getString('user') ? JSON.parse(storage.getString('user')!) : null,
+  token: null,
+  user:  null,
 
   setAuth: (token, user) => {
-    storage.set('token', token);
-    storage.set('user', JSON.stringify(user));
+    AsyncStorage.setItem('token', token);
+    AsyncStorage.setItem('user', JSON.stringify(user));
     set({ token, user });
   },
 
   logout: () => {
-    storage.delete('token');
-    storage.delete('user');
+    AsyncStorage.removeItem('token');
+    AsyncStorage.removeItem('user');
     set({ token: null, user: null, latestReadings: {}, alerts: [], unreadCount: 0 });
+  },
+
+  // Apelat o singură dată în App.tsx la mount
+  loadToken: async () => {
+    const token = await AsyncStorage.getItem('token');
+    const userStr = await AsyncStorage.getItem('user');
+    if (token) {
+      set({
+        token,
+        user: userStr ? JSON.parse(userStr) : null,
+      });
+    }
   },
 
   connected: false,

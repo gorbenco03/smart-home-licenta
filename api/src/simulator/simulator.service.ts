@@ -19,6 +19,7 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
   private nodes: NodeState[] = [
     { nodeId: 'esp32_node_a', location: 'living',   tempBase: 21, humBase: 52, gasBaseline: 150, lastMotion: 0 },
     { nodeId: 'esp32_node_b', location: 'dormitor', tempBase: 19, humBase: 58, gasBaseline: 130, lastMotion: 0 },
+    { nodeId: 'esp32_cam_node', location: 'hol',    tempBase: 20, humBase: 55, gasBaseline: 140, lastMotion: 0 },
   ];
 
   constructor(
@@ -55,12 +56,15 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async ensureNodes() {
-    const nodes = await this.sensorsService.getNodes();
-    if (nodes.length === 0) {
-      // Nodurile sunt create automat de DB sync + seed din init.sql
-      // Dacă nu există, TypeORM synchronize le va crea la next save
-      console.log('[Simulator] Nodurile vor fi create la prima citire');
+    const nodeTypes: Record<string, string> = {
+      esp32_node_a:   'hybrid',   // senzori + servo + relay
+      esp32_node_b:   'sensor',   // senzori + relay
+      esp32_cam_node: 'camera',   // cameră MJPEG
+    };
+    for (const node of this.nodes) {
+      await this.sensorsService.upsertNode(node.nodeId, node.location, nodeTypes[node.nodeId]);
     }
+    console.log('[Simulator] Noduri verificate/create:', this.nodes.map((n) => n.nodeId).join(', '));
   }
 
   private async generate() {

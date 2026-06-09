@@ -22,4 +22,7 @@ export class Node {
 
   @Column({ name: 'firmware_ver', nullable: true })
   firmwareVer: string;
+
+  @Column({ name: 'node_type', nullable: true })
+  nodeType: string;   // 'sensor' | 'camera' | 'hybrid'
 }
