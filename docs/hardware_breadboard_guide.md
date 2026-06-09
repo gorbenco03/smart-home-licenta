@@ -601,30 +601,26 @@ sudo apt install -y python3 python3-pip python3-venv
 sudo apt install -y curl wget htop nano unzip
 ```
 
-### 9.4 Instalare și configurare PostgreSQL + TimescaleDB
+### 9.4 Instalare și configurare PostgreSQL
+
+> ℹ️ **Notă:** TimescaleDB nu are pachete ARM64 compatibile cu Raspberry Pi OS Bookworm.
+> Folosim **PostgreSQL standard** — codul NestJS funcționează identic, fără nicio modificare.
 
 ```bash
-# PostgreSQL
+# Dacă ai încercat deja să instalezi TimescaleDB și ai erori, curăță mai întâi:
+sudo rm -f /etc/apt/sources.list.d/timescaledb.list
+sudo rm -f /etc/apt/trusted.gpg.d/timescaledb.gpg
+sudo apt update
+
+# Instalare PostgreSQL
 sudo apt install -y postgresql postgresql-client
 
 # Pornire și activare automată la boot
 sudo systemctl enable postgresql
 sudo systemctl start postgresql
 
-# Instalare TimescaleDB
-sudo apt install -y gnupg
-curl -fsSL https://packagecloud.io/timescale/timescaledb/gpgkey | \
-  sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg
-
-echo "deb https://packagecloud.io/timescale/timescaledb/debian/ $(lsb_release -c -s) main" | \
-  sudo tee /etc/apt/sources.list.d/timescaledb.list
-
-sudo apt update
-sudo apt install -y timescaledb-2-postgresql-15
-
-# Activare TimescaleDB
-sudo timescaledb-tune --quiet --yes
-sudo systemctl restart postgresql
+# Verificare
+sudo systemctl status postgresql   # trebuie să afișeze: Active: active (running)
 ```
 
 **Creare bază de date și utilizator:**
@@ -633,11 +629,9 @@ sudo systemctl restart postgresql
 # Intră în PostgreSQL ca admin
 sudo -u postgres psql
 
-# În consola PostgreSQL (toate liniile de jos):
+# În consola PostgreSQL (copiază toate liniile de jos, una câte una):
 CREATE USER smarthome WITH PASSWORD 'smarthome_pass_2026';
 CREATE DATABASE smarthome_db OWNER smarthome;
-\c smarthome_db
-CREATE EXTENSION IF NOT EXISTS timescaledb;
 \q
 ```
 
