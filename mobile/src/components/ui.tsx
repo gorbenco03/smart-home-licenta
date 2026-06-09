@@ -29,15 +29,16 @@ export function Dot({
 type PillKind = 'live' | 'reconn' | 'offline';
 
 const PILL_MAP: Record<PillKind, { color: string; bg: string; label: string }> = {
-  live:    { color: T.success, bg: T.successSoft, label: '● live' },
-  reconn:  { color: T.warning, bg: T.warningSoft, label: '● reconectare…' },
-  offline: { color: T.text3,   bg: T.surface2,    label: '● offline' },
+  live:    { color: T.success, bg: T.successSoft, label: 'Live' },
+  reconn:  { color: T.warning, bg: T.warningSoft, label: 'Reconectare…' },
+  offline: { color: T.text3,   bg: T.surface2,    label: 'Offline' },
 };
 
 export function StatusPill({ kind = 'live' }: { kind?: PillKind }) {
   const m = PILL_MAP[kind];
   return (
     <View style={[pill.wrap, { backgroundColor: m.bg, borderColor: T.border }]}>
+      <Dot color={m.color} size={6} />
       <Text style={[pill.text, { color: m.color }]}>{m.label}</Text>
     </View>
   );
@@ -45,16 +46,17 @@ export function StatusPill({ kind = 'live' }: { kind?: PillKind }) {
 
 const pill = StyleSheet.create({
   wrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
   },
   text: {
-    fontFamily: 'Courier New',
-    fontSize: 11,
-    fontWeight: '500',
-    letterSpacing: 0,
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 
@@ -163,16 +165,16 @@ export function Ring({
       {/* Center label */}
       <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', gap: 2 }]}>
         {label && (
-          <Text style={{ fontSize: 9, color: T.text3, textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'Courier New' }}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: T.text3, textTransform: 'uppercase', letterSpacing: 0.8 }}>
             {label}
           </Text>
         )}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
-          <Text style={{ fontSize: 24, fontWeight: '500', color: T.text, lineHeight: 26, fontFamily: 'Courier New' }}>
+          <Text style={{ fontSize: 24, fontWeight: '600', color: T.text, lineHeight: 26, fontVariant: ['tabular-nums'] }}>
             {value}
           </Text>
           {unit && (
-            <Text style={{ fontSize: 11, color: T.text3, paddingBottom: 3, fontFamily: 'Courier New' }}>
+            <Text style={{ fontSize: 12, color: T.text3, paddingBottom: 3 }}>
               {unit}
             </Text>
           )}
@@ -215,9 +217,9 @@ export function GasBar({ value, alert }: { value: number; alert: boolean }) {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 6 }}>
-        <Text style={{ fontSize: 10, color: T.text3, letterSpacing: 1.2, fontFamily: 'Courier New' }}>GAZ</Text>
-        <Text style={{ fontSize: 11, color: alert ? T.danger : T.text2, fontFamily: 'Courier New' }}>
-          {value} <Text style={{ color: T.text3 }}>ADC</Text>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: T.text3, letterSpacing: 0.8 }}>AER</Text>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: alert ? T.danger : T.text2 }}>
+          {alert ? 'Nivel ridicat' : 'Normal'}
         </Text>
       </View>
       <View style={{ height: 6, borderRadius: 99, backgroundColor: T.surface3, overflow: 'hidden', position: 'relative' }}>

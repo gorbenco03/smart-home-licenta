@@ -1,6 +1,8 @@
 // Design tokens — warm dark stone + amber accent
 // Translated from tokens.css (Claude Design handoff)
 
+import { TextStyle } from 'react-native';
+
 export const T = {
   // Surfaces
   bg:         '#0c0a09',
@@ -58,4 +60,21 @@ export const T = {
     shadowRadius: 16,
     elevation: 8,
   } as const,
+};
+
+// ── Scară tipografică — system font, nimic sub 12px ──────
+// Valorile numerice de senzori folosesc tabular-nums pentru
+// cifre aliniate, fără font monospace.
+export const F: Record<string, TextStyle> = {
+  display: { fontSize: 34, fontWeight: '700', letterSpacing: -1,   color: T.text },
+  title:   { fontSize: 28, fontWeight: '700', letterSpacing: -0.7, color: T.text },
+  heading: { fontSize: 17, fontWeight: '600', letterSpacing: -0.3, color: T.text },
+  body:    { fontSize: 15, fontWeight: '400', color: T.text2 },
+  label:   { fontSize: 13, fontWeight: '500', color: T.text2 },
+  caption: { fontSize: 12, fontWeight: '500', color: T.text3 },
+  kicker:  {
+    fontSize: 12, fontWeight: '600', color: T.text3,
+    letterSpacing: 1, textTransform: 'uppercase',
+  },
+  num: { fontVariant: ['tabular-nums'], fontWeight: '600', color: T.text },
 };

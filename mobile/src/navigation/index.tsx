@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -17,12 +18,13 @@ import ControlScreen  from '../screens/ControlScreen';
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab   = createBottomTabNavigator<MainTabParamList>();
 
-/* ─── SVG-free icon set (text glyphs) ─── */
-const TAB_ICONS: Record<string, { on: string; off: string }> = {
-  Dashboard: { on: '⌂', off: '⌂' },
-  History:   { on: '↗', off: '↗' },
-  Alerts:    { on: '◉', off: '○' },
-  Control:   { on: '⊡', off: '⊡' },
+/* ─── Tab icons (Ionicons) ─── */
+type IonName = keyof typeof Ionicons.glyphMap;
+const TAB_ICONS: Record<string, { on: IonName; off: IonName; label: string }> = {
+  Dashboard: { on: 'home',          off: 'home-outline',          label: 'Acasă' },
+  History:   { on: 'stats-chart',   off: 'stats-chart-outline',   label: 'Istoric' },
+  Alerts:    { on: 'notifications', off: 'notifications-outline', label: 'Alerte' },
+  Control:   { on: 'toggle',        off: 'toggle-outline',        label: 'Control' },
 };
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
@@ -35,7 +37,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
           const { options } = descriptors[route.key];
           const focused = state.index === index;
           const label = route.name;
-          const icon  = TAB_ICONS[label] ?? { on: '●', off: '●' };
+          const icon  = TAB_ICONS[label] ?? { on: 'ellipse' as IonName, off: 'ellipse-outline' as IonName, label };
           const isAlerts = label === 'Alerts';
           const badge = isAlerts && unreadCount > 0 ? unreadCount : 0;
 
@@ -52,9 +54,11 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
               activeOpacity={0.8}
             >
               <View style={{ position: 'relative' }}>
-                <Text style={[tb.icon, { color: focused ? T.accent : T.text2 }]}>
-                  {focused ? icon.on : icon.off}
-                </Text>
+                <Ionicons
+                  name={focused ? icon.on : icon.off}
+                  size={21}
+                  color={focused ? T.accent : T.text2}
+                />
                 {badge > 0 && (
                   <View style={tb.badge}>
                     <Text style={tb.badgeText}>{badge}</Text>
@@ -62,7 +66,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
                 )}
               </View>
               {focused && (
-                <Text style={tb.label}>{label === 'Dashboard' ? 'Dashboard' : label}</Text>
+                <Text style={tb.label}>{icon.label}</Text>
               )}
             </TouchableOpacity>
           );
@@ -98,14 +102,14 @@ const tb = StyleSheet.create({
   icon: { fontSize: 19 },
   label: { fontSize: 13, fontWeight: '600', color: T.accent, letterSpacing: -0.1 },
   badge: {
-    position: 'absolute', top: -5, right: -8,
-    minWidth: 16, height: 16, borderRadius: 8,
+    position: 'absolute', top: -6, right: -9,
+    minWidth: 18, height: 18, borderRadius: 9,
     backgroundColor: T.danger,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: T.surface,
-    paddingHorizontal: 2,
+    paddingHorizontal: 3,
   },
-  badgeText: { fontFamily: 'Courier New', fontSize: 9, fontWeight: '700', color: '#fff' },
+  badgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
 });
 
 function MainTabs() {

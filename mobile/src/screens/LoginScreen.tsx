@@ -4,6 +4,7 @@ import {
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
   Platform, ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../services/api';
 import { useAppStore } from '../store';
 import { connectSocket } from '../services/socket';
@@ -25,7 +26,7 @@ export default function LoginScreen() {
       setAuth(access_token, user);
       connectSocket();
     } catch (e: any) {
-      setError(e.response?.data?.message ?? 'Eroare de conectare. Verifică IP-ul serverului.');
+      setError(e.response?.data?.message ?? 'Nu am găsit sistemul. Verifică dacă ești pe aceeași rețea WiFi.');
     } finally {
       setLoading(false);
     }
@@ -48,25 +49,20 @@ export default function LoginScreen() {
         {/* Brand mark */}
         <View style={s.brand}>
           <View style={s.logoBox}>
-            <Text style={s.logoIcon}>⌂</Text>
+            <Ionicons name="home" size={18} color={T.accentOn} />
           </View>
-          <Text style={s.version}>v2.6.1</Text>
         </View>
 
         {/* Title block */}
         <View style={s.titleBlock}>
           <Text style={s.title}>Smart Home</Text>
-          <View style={s.titleMeta}>
-            <Text style={s.tagAccent}>LOCAL·FIRST</Text>
-            <View style={s.dot3} />
-            <Text style={s.tagMuted}>2 NODURI · 12 SENZORI</Text>
-          </View>
+          <Text style={s.subtitle}>Bun venit acasă</Text>
         </View>
 
         {/* Inputs */}
         <View style={s.inputs}>
-          <FieldInput label="UTILIZATOR" value={username} onChangeText={setUsername} />
-          <FieldInput label="PAROLĂ" value={password} onChangeText={setPassword} secureTextEntry />
+          <FieldInput label="Utilizator" value={username} onChangeText={setUsername} />
+          <FieldInput label="Parolă" value={password} onChangeText={setPassword} secureTextEntry />
         </View>
 
         {error ? <Text style={s.errorText}>{error}</Text> : null}
@@ -80,18 +76,9 @@ export default function LoginScreen() {
         >
           {loading
             ? <ActivityIndicator color={T.accentOn} />
-            : <Text style={s.btnText}>Conectare →</Text>
+            : <Text style={s.btnText}>Conectare</Text>
           }
         </TouchableOpacity>
-
-        <View style={{ flex: 1 }} />
-
-        {/* Gateway status */}
-        <View style={s.footer}>
-          <View style={s.footerDot} />
-          <Text style={s.footerText}>GATEWAY · 192.168.1.42 · ONLINE</Text>
-        </View>
-        <Text style={s.hint}>demo: admin / admin123</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -127,23 +114,20 @@ const fi = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.border,
     paddingHorizontal: 16,
-    paddingTop: 11,
-    paddingBottom: 12,
+    paddingTop: 12,
+    paddingBottom: 13,
     marginBottom: 14,
   },
   label: {
-    fontFamily: 'Courier New',
-    fontSize: 11,
+    fontSize: 13,
+    fontWeight: '500',
     color: T.text3,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    marginBottom: 4,
+    marginBottom: 5,
   },
   input: {
     fontSize: 17,
     color: T.text,
     letterSpacing: -0.2,
-    fontFamily: 'Courier New',
     padding: 0,
   },
 });
@@ -176,12 +160,10 @@ const s = StyleSheet.create({
   brand: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 0,
   },
   logoBox: {
-    width: 34, height: 34,
-    borderRadius: 10,
+    width: 40, height: 40,
+    borderRadius: 12,
     backgroundColor: T.accent,
     alignItems: 'center',
     justifyContent: 'center',
@@ -191,52 +173,27 @@ const s = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
-  logoIcon: { fontSize: 18, color: T.accentOn },
-  version: {
-    fontFamily: 'Courier New',
-    fontSize: 11,
-    color: T.text3,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
-  titleBlock: { marginTop: 72, marginBottom: 48 },
+  titleBlock: { marginTop: 64, marginBottom: 44 },
   title: {
     fontSize: 38,
-    fontWeight: '600',
-    letterSpacing: -1.3,
+    fontWeight: '700',
+    letterSpacing: -1.2,
     color: T.text,
-    lineHeight: 42,
+    lineHeight: 44,
   },
-  titleMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 10,
-  },
-  tagAccent: {
-    fontFamily: 'Courier New',
-    fontSize: 11,
-    color: T.accent,
-    letterSpacing: 0.4,
-  },
-  dot3: {
-    width: 3, height: 3,
-    borderRadius: 1.5,
-    backgroundColor: T.text4,
-  },
-  tagMuted: {
-    fontFamily: 'Courier New',
-    fontSize: 11,
-    color: T.text3,
-    letterSpacing: 0.4,
+  subtitle: {
+    fontSize: 16,
+    color: T.text2,
+    marginTop: 8,
   },
   inputs: { marginBottom: 6 },
   errorText: {
     color: T.danger,
-    fontSize: 13,
+    fontSize: 14,
     textAlign: 'center',
-    marginBottom: 10,
-    marginTop: -4,
+    marginBottom: 12,
+    marginTop: -2,
+    lineHeight: 20,
   },
   btn: {
     height: 56,
@@ -253,40 +210,9 @@ const s = StyleSheet.create({
     elevation: 8,
   },
   btnText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
     color: T.accentOn,
     letterSpacing: -0.2,
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 24,
-  },
-  footerDot: {
-    width: 5, height: 5,
-    borderRadius: 2.5,
-    backgroundColor: T.success,
-    shadowColor: T.success,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  footerText: {
-    fontFamily: 'Courier New',
-    fontSize: 11,
-    color: T.text3,
-    letterSpacing: 0.4,
-  },
-  hint: {
-    fontFamily: 'Courier New',
-    fontSize: 10.5,
-    color: T.text4,
-    textAlign: 'center',
-    marginTop: 4,
-    letterSpacing: 0.3,
   },
 });
