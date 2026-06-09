@@ -42,7 +42,8 @@ export default function DashboardScreen() {
   const { data: latest, refetch: refetchLatest } = useQuery({
     queryKey: ['latest'],
     queryFn: api.sensors.latest,
-    staleTime: 10_000,
+    staleTime: 5_000,
+    refetchInterval: 5_000,
   });
 
   useEffect(() => {
