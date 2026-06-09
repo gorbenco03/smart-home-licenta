@@ -1,22 +1,29 @@
 import axios from 'axios';
 import { API_BASE } from './config';
+import { resolveHost, invalidateHost } from './discovery';
 import { useAppStore } from '../store';
 import { SensorReading, AlertItem, NodeInfo, AutomationRule } from '../types';
 
 const client = axios.create({ baseURL: API_BASE });
 
-// Injectează token JWT automat la fiecare request
-client.interceptors.request.use((config) => {
+// Descoperă serverul (acasă / hotspot / rețea nouă) + injectează JWT
+client.interceptors.request.use(async (config) => {
+  const host = await resolveHost();
+  config.baseURL = `${host}/api`;
+
   const token = useAppStore.getState().token;
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
 // 401 → logout automat (doar dacă există un token — evită loop la login)
+// Eroare de rețea (fără răspuns) → redescoperim serverul la următoarea cerere
 client.interceptors.response.use(
   (r) => r,
   (error) => {
-    if (error.response?.status === 401 && useAppStore.getState().token) {
+    if (!error.response) {
+      invalidateHost();
+    } else if (error.response.status === 401 && useAppStore.getState().token) {
       useAppStore.getState().logout();
     }
     return Promise.reject(error);

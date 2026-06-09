@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { WS_HOST } from './config';
+import { getResolvedHost } from './discovery';
 import { useAppStore } from '../store';
 import { SensorReading, AlertItem } from '../types';
 
@@ -20,7 +21,11 @@ export function connectSocket() {
 
   const token = useAppStore.getState().token;
 
-  socket = io(`${WS_HOST}/live`, {
+  // Folosește hostul descoperit de discovery.ts (login-ul rulează mereu
+  // înaintea socket-ului, deci e deja rezolvat); fallback pe config
+  const host = getResolvedHost() ?? WS_HOST;
+
+  socket = io(`${host}/live`, {
     auth: { token },
     transports: ['websocket'],
     reconnectionDelay: 3000,

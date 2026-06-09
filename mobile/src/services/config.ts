@@ -16,7 +16,8 @@ export const WS_HOST  = API_HOST;
 
 // ── Hotspot IP (fix, nu se schimbă niciodată) ─────────────
 // Folosit în SetupScreen când telefonul e conectat la SmartHome-Setup
-export const HOTSPOT_API = 'http://192.168.4.1:3000/api';
+export const HOTSPOT_HOST = 'http://192.168.4.1:3000';
+export const HOTSPOT_API = `${HOTSPOT_HOST}/api`;
 
 // ── ESP32-CAM ─────────────────────────────────────────────
 // Schimbă după ce ESP32-CAM e conectat la WiFi și îi afli IP-ul
