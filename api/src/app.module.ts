@@ -11,6 +11,7 @@ import { RulesModule } from './rules/rules.module';
 import { CommandsModule } from './commands/commands.module';
 import { MqttModule } from './mqtt/mqtt.module';
 import { SimulatorModule } from './simulator/simulator.module';
+import { SetupModule } from './setup/setup.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { SimulatorModule } from './simulator/simulator.module';
     CommandsModule,
     MqttModule,
     SimulatorModule,
+    SetupModule,
   ],
 })
 export class AppModule {}

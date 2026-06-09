@@ -8,6 +8,7 @@ import { RootStackParamList, MainTabParamList } from '../types';
 import { T } from '../theme';
 
 import LoginScreen    from '../screens/LoginScreen';
+import SetupScreen    from '../screens/SetupScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import HistoryScreen  from '../screens/HistoryScreen';
 import AlertsScreen   from '../screens/AlertsScreen';
@@ -128,7 +129,17 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {token ? (
-          <Stack.Screen name="Main" component={MainTabs} />
+          <>
+            <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen
+              name="Setup"
+              options={{ headerShown: false, presentation: 'modal' }}
+            >
+              {(props) => (
+                <SetupScreen onDone={() => props.navigation.goBack()} />
+              )}
+            </Stack.Screen>
+          </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />
         )}

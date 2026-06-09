@@ -73,4 +73,19 @@ export const api = {
     remove: (id: number) =>
       client.delete(`/rules/${id}`).then((r) => r.data),
   },
+
+  setup: {
+    status: () =>
+      client.get<{ mode: string; ssid?: string; ip?: string }>('/setup/status').then((r) => r.data),
+
+    scanNetworks: () =>
+      client.get<{ ssid: string; signal: number; secured: boolean; connected: boolean }[]>(
+        '/setup/networks'
+      ).then((r) => r.data),
+
+    connectToNetwork: (ssid: string, password: string) =>
+      client.post<{ success: boolean; message: string }>(
+        '/setup/connect', { ssid, password }
+      ).then((r) => r.data),
+  },
 };

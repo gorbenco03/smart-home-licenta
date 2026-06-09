@@ -10,6 +10,9 @@ import { T } from '../theme';
 import { Dot, Ring, Sparkline, StatusPill, GasBar } from '../components/ui';
 import { SensorReading } from '../types';
 import { disconnectSocket } from '../services/socket';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../types';
 
 // Static sparkline history shapes (will animate via WS updates in future)
 const TREND_TEMP   = [20.5, 21.0, 21.4, 21.8, 22.0, 22.1];
@@ -27,6 +30,7 @@ export default function DashboardScreen() {
   const setLatest      = useAppStore((s) => s.setLatestReading);
   const connected      = useAppStore((s) => s.connected);
   const logout         = useAppStore((s) => s.logout);
+  const navigation     = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   function handleLogout() {
     disconnectSocket();
@@ -82,6 +86,9 @@ export default function DashboardScreen() {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <StatusPill kind={connected ? 'live' : 'reconn'} />
+            <TouchableOpacity onPress={() => navigation.navigate('Setup')} style={s.logoutBtn} activeOpacity={0.75}>
+              <Text style={s.logoutText}>⊕</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={handleLogout} style={s.logoutBtn} activeOpacity={0.75}>
               <Text style={s.logoutText}>⏻</Text>
             </TouchableOpacity>

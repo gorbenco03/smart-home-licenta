@@ -51,6 +51,7 @@ export interface AutomationRule {
 export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
+  Setup: undefined;
 };
 
 export type MainTabParamList = {
