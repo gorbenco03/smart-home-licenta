@@ -1,20 +1,25 @@
-// Adresa RPi:
-//  - Pe hotspot (setup inițial): 192.168.4.1
-//  - Pe rețeaua casei (după configurare): smarthome.local
+// ── API Host ─────────────────────────────────────────────
+// Prioritate: env var > fallback bazat pe __DEV__
 //
-// Schimbă doar dacă ai nevoie de IP fix pentru debug:
-export const API_HOST = __DEV__
-  ? 'http://192.168.1.64:3000'      // Expo Go — IP fix pentru dev
-  : 'http://smarthome.local:3000';  // Build produs — mDNS
+// Development (Expo Go):        setează EXPO_PUBLIC_API_HOST în .env
+// Build preview (TestFlight):   setat în eas.json → env → preview
+// Build production (App Store): setat în eas.json → env → production
 
-// IP hotspot pentru setup wizard (mereu fix)
-export const HOTSPOT_HOST = 'http://192.168.4.1:3000';
+export const API_HOST: string =
+  process.env.EXPO_PUBLIC_API_HOST ??
+  (__DEV__
+    ? 'http://192.168.1.64:3000'       // Expo Go — IP fix RPi în rețeaua locală
+    : 'http://smarthome.local:3000');  // fallback dacă env var nu e setat
 
 export const API_BASE = `${API_HOST}/api`;
 export const WS_HOST  = API_HOST;
 
-// ESP32-CAM — schimbă IP-ul după ce îl conectezi la Wi-Fi
-// Găsești IP-ul în Serial Monitor din Arduino IDE după boot
-export const CAMERA_HOST        = 'http://192.168.1.50';   // ← înlocuiește cu IP-ul real
-export const CAMERA_STREAM_URL  = `${CAMERA_HOST}/stream`;  // MJPEG live
-export const CAMERA_SNAPSHOT_URL = `${CAMERA_HOST}/capture`; // JPEG snapshot
+// ── Hotspot IP (fix, nu se schimbă niciodată) ─────────────
+// Folosit în SetupScreen când telefonul e conectat la SmartHome-Setup
+export const HOTSPOT_API = 'http://192.168.4.1:3000/api';
+
+// ── ESP32-CAM ─────────────────────────────────────────────
+// Schimbă după ce ESP32-CAM e conectat la WiFi și îi afli IP-ul
+export const CAMERA_HOST         = process.env.EXPO_PUBLIC_CAMERA_HOST ?? 'http://192.168.1.50';
+export const CAMERA_STREAM_URL   = `${CAMERA_HOST}/stream`;
+export const CAMERA_SNAPSHOT_URL = `${CAMERA_HOST}/capture`;

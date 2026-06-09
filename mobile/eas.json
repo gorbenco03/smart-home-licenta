@@ -1,22 +1,31 @@
 {
   "cli": {
-    "version": ">= 10.0.0"
+    "version": ">= 10.0.0 < 15.0.0"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_HOST": "http://192.168.1.64:3000"
+      }
     },
     "preview": {
       "distribution": "internal",
       "ios": {
         "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_HOST": "http://smarthome.local:3000"
       }
     },
     "production": {
       "distribution": "store",
       "ios": {
         "autoIncrement": true
+      },
+      "env": {
+        "EXPO_PUBLIC_API_HOST": "http://smarthome.local:3000"
       }
     }
   },
