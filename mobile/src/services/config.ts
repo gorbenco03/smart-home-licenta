@@ -4,8 +4,8 @@
 //
 // Schimbă doar dacă ai nevoie de IP fix pentru debug:
 export const API_HOST = __DEV__
-  ? 'http://192.168.1.64:3000'      // debug local cu IP fix
-  : 'http://smarthome.local:3000';  // producție — mDNS
+  ? 'http://192.168.1.64:3000'      // Expo Go — IP fix pentru dev
+  : 'http://smarthome.local:3000';  // Build produs — mDNS
 
 // IP hotspot pentru setup wizard (mereu fix)
 export const HOTSPOT_HOST = 'http://192.168.4.1:3000';
