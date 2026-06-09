@@ -13,7 +13,8 @@
     "preview": {
       "distribution": "internal",
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "image": "macos-sonoma-14.5-xcode-16.0"
       },
       "env": {
         "EXPO_PUBLIC_API_HOST": "http://smarthome.local:3000"
