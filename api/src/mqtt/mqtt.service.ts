@@ -55,6 +55,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleMessage(topic: string, payload: string) {
+    console.log(`[MQTT] Mesaj primit pe topic: ${topic} → ${payload}`);
     try {
       const data = JSON.parse(payload);
 
