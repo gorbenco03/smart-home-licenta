@@ -22,6 +22,7 @@ export interface SetupStatus {
 @Injectable()
 export class SetupService {
   private readonly logger = new Logger(SetupService.name);
+  static readonly HOTSPOT_CON  = 'SmartHome-Hotspot';
   static readonly HOTSPOT_SSID = 'SmartHome-Setup';
   static readonly HOTSPOT_PASS = 'smarthome2026';
   static readonly HOTSPOT_IP   = '192.168.4.1';
@@ -33,7 +34,7 @@ export class SetupService {
     try {
       // Verifică dacă hotspot-ul e activ
       const { stdout: hotspotCheck } = await execAsync(
-        `sudo nmcli con show --active | grep -i hotspot || true`
+        `sudo nmcli -t -f NAME con show --active | grep -x "${SetupService.HOTSPOT_CON}" || true`
       );
       if (hotspotCheck.trim()) {
         return {
@@ -113,7 +114,7 @@ export class SetupService {
       });
 
       // Oprește hotspot-ul dacă e activ
-      await execAsync(`sudo nmcli con down "SmartHome-Hotspot" || true`);
+      await execAsync(`sudo nmcli con down "${SetupService.HOTSPOT_CON}" || true`);
       await new Promise(r => setTimeout(r, 1000));
 
       // Conectare la noua rețea
@@ -134,43 +135,34 @@ export class SetupService {
   }
 
   // ── Pornire hotspot ────────────────────────────────────
+  // Profil identic cu cel creat de gateway/scripts/smarthome-wifi.sh —
+  // refolosim profilul existent în loc să-l ștergem și recreăm.
   async startHotspot(): Promise<void> {
+    const con = SetupService.HOTSPOT_CON;
     try {
-      this.logger.log('[Setup] Pornire hotspot SmartHome-Setup...');
-      await execAsync(`sudo nmcli con down "SmartHome-Hotspot" || true`);
-      await execAsync(`sudo nmcli con delete "SmartHome-Hotspot" || true`);
-      await execAsync(
-        `sudo nmcli con add type wifi ifname wlan0 con-name "SmartHome-Hotspot" ` +
-        `autoconnect no ssid "${SetupService.HOTSPOT_SSID}"`
+      this.logger.log(`[Setup] Pornire hotspot ${SetupService.HOTSPOT_SSID}...`);
+
+      const { stdout: existing } = await execAsync(
+        `sudo nmcli -t -f NAME con show | grep -x "${con}" || true`
       );
-      await execAsync(
-        `sudo nmcli con modify "SmartHome-Hotspot" ` +
-        `802-11-wireless.mode ap ` +
-        `802-11-wireless-security.key-mgmt wpa-psk ` +
-        `802-11-wireless-security.psk "${SetupService.HOTSPOT_PASS}" ` +
-        `ipv4.method shared ` +
-        `ipv4.addresses ${SetupService.HOTSPOT_IP}/24`
+      if (!existing.trim()) {
+        await execAsync(
+          `sudo nmcli con add type wifi ifname wlan0 con-name "${con}" ` +
+          `autoconnect no ssid "${SetupService.HOTSPOT_SSID}" ` +
+          `802-11-wireless.mode ap ` +
+          `802-11-wireless-security.key-mgmt wpa-psk ` +
+          `802-11-wireless-security.psk "${SetupService.HOTSPOT_PASS}" ` +
+          `ipv4.method shared ` +
+          `ipv4.addresses ${SetupService.HOTSPOT_IP}/24`
+        );
+      }
+
+      await execAsync(`sudo nmcli con up "${con}"`);
+      this.logger.log(
+        `[Setup] Hotspot activ: ${SetupService.HOTSPOT_SSID} / ${SetupService.HOTSPOT_PASS}`
       );
-      await execAsync(`sudo nmcli con up "SmartHome-Hotspot"`);
-      this.logger.log('[Setup] Hotspot activ: SmartHome-Setup / smarthome2026');
     } catch (e) {
       this.logger.error('[Setup] Eroare pornire hotspot:', e.message);
-    }
-  }
-
-  // ── Auto-hotspot: pornit la boot dacă nu e WiFi ────────
-  async autoHotspot(): Promise<void> {
-    this.logger.log('[Setup] Verificare conectivitate la boot...');
-
-    // Așteptăm 15s să se conecteze la rețeaua salvată
-    await new Promise(r => setTimeout(r, 15_000));
-
-    const status = await this.getStatus();
-    if (status.mode === 'connected') {
-      this.logger.log(`[Setup] Conectat la ${status.ssid} — hotspot inactiv`);
-    } else {
-      this.logger.log('[Setup] Nicio rețea găsită — pornire hotspot');
-      await this.startHotspot();
     }
   }
 }

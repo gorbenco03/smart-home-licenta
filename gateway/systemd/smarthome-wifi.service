@@ -1,0 +1,13 @@
+[Unit]
+Description=SmartHome WiFi fallback (hotspot daca nu exista WiFi cunoscut)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/smarthome-wifi.sh
+RemainAfterExit=yes
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

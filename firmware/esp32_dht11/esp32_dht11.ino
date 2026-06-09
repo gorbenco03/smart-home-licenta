@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <PubSubClient.h>
 #include <DHT.h>
 #include <ArduinoJson.h>
@@ -105,20 +106,63 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   }
 }
 
+// ── Rezolvare host MQTT ───────────────────────────────────
+// PubSubClient nu rezolvă nume .local prin DNS obișnuit — pe rețele noi
+// (după provisioning) RPi e găsit prin mDNS: smarthome.local → IP.
+String resolveMqttHost() {
+  if (!mqttHost.endsWith(".local")) return mqttHost;
+
+  String name = mqttHost.substring(0, mqttHost.length() - 6);  // fără ".local"
+  Serial.printf("[mDNS] Rezolv %s...\n", mqttHost.c_str());
+
+  static bool mdnsStarted = false;
+  if (!mdnsStarted) {
+    if (!MDNS.begin("esp32-" NODE_ID)) {
+      Serial.println("[mDNS] Eroare init — folosesc IP-ul default");
+      return DEFAULT_MQTT_HOST;
+    }
+    mdnsStarted = true;
+  }
+
+  for (int i = 0; i < 5; i++) {
+    IPAddress ip = MDNS.queryHost(name.c_str(), 3000);
+    if (ip != IPAddress(0, 0, 0, 0)) {
+      Serial.printf("[mDNS] %s → %s\n", mqttHost.c_str(), ip.toString().c_str());
+      return ip.toString();
+    }
+    Serial.println("[mDNS] Negăsit, reîncerc...");
+    delay(2000);
+  }
+
+  Serial.println("[mDNS] Eșec — folosesc IP-ul default");
+  return DEFAULT_MQTT_HOST;
+}
+
 // ── Conectare MQTT ────────────────────────────────────────
+// Retry limitat: dacă brokerul nu răspunde, restart (fără ștergerea
+// credențialelor — mutarea în altă rețea e tratată de connectWifi(),
+// care revine singur pe hotspotul default când WiFi-ul salvat lipsește).
 void connectMqtt() {
-  mqtt.setServer(mqttHost.c_str(), MQTT_PORT);
+  String host = resolveMqttHost();
+  mqtt.setServer(host.c_str(), MQTT_PORT);
   mqtt.setCallback(onMessage);
 
+  int attempts = 0;
   while (!mqtt.connected()) {
     Serial.print("[MQTT] Conectare...");
     if (mqtt.connect("esp32-" NODE_ID, MQTT_USER, MQTT_PASS)) {
       Serial.println(" OK");
       mqtt.subscribe(("smarthome/" NODE_ID "/commands"));
-    } else {
-      Serial.printf(" Eroare: %d — reîncerc în 3s\n", mqtt.state());
-      delay(3000);
+      return;
     }
+
+    Serial.printf(" Eroare: %d — reîncerc în 3s\n", mqtt.state());
+    if (++attempts >= 10) {
+      Serial.println("[MQTT] Broker negăsit după 10 încercări — restart");
+      delay(1000);
+      ESP.restart();
+    }
+    delay(3000);
   }
 }
 

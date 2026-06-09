@@ -148,10 +148,36 @@ smarthome ALL=(ALL) NOPASSWD: /usr/bin/nmcli
 
 ---
 
+## Arhitectura WiFi fallback (decisă 2026-06-10)
+
+**O singură sursă de adevăr pentru hotspot la boot = systemd**, nu API-ul:
+- `gateway/scripts/smarthome-wifi.sh` → instalat în `/usr/local/bin/` — așteaptă NM + autoconnect 45s; dacă wlan0 nu e conectat, pornește profilul AP `SmartHome-Hotspot` (SSID `SmartHome-Setup`, psk `smarthome2026`, `mode ap`, `ipv4.method shared`, `192.168.4.1/24`)
+- `gateway/systemd/smarthome-wifi.service` → instalat în `/etc/systemd/system/`, enabled
+- NestJS: `autoHotspot()` **eliminat** din `onModuleInit` (PM2 repornește API-ul la crash → pornea hotspotul peste WiFi valid). `startHotspot()` rămâne doar ca fallback la `connectToNetwork()` eșuat și pentru `POST /setup/hotspot`; refolosește profilul existent (nu mai delete+create)
+- Numele conexiunii NM e mereu `SmartHome-Hotspot`; `getStatus()` face match exact pe el
+- **Atenție:** profilul vechi `SmartHome-Setup` creat manual pe RPi era *client* (fără `mode ap`) — de șters: `sudo nmcli con delete "SmartHome-Setup"`
+
+**Instalare pe RPi curat:**
+```bash
+sudo cp gateway/scripts/smarthome-wifi.sh /usr/local/bin/ && sudo chmod +x /usr/local/bin/smarthome-wifi.sh
+sudo cp gateway/systemd/smarthome-wifi.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable smarthome-wifi.service
+sudo apt install -y avahi-daemon && sudo hostnamectl set-hostname smarthome   # → smarthome.local
+```
+
+**Recuperare acces când hotspotul e activ:** conectează laptopul la `SmartHome-Setup` → `ssh smarthome@192.168.4.1`. Revenire pe WiFi (supraviețuiește căderii SSH):
+```bash
+sudo systemd-run sh -c 'nmcli con down SmartHome-Hotspot; nmcli con up "<HomeWiFi>"'
+```
+
+**Firmware ESP32:** rezolvă `smarthome.local` prin ESPmDNS înainte de MQTT; retry MQTT limitat la 10 → restart (fără ștergerea credențialelor — mutarea e tratată de fallback-ul WiFi).
+
+---
+
 ## Flux WiFi Provisioning (cum funcționează)
 
 ```
-1. RPi pornește → autoHotspot() → creează WiFi "SmartHome-Setup" (192.168.4.1)
+1. RPi pornește → smarthome-wifi.service → fără WiFi cunoscut în 45s → hotspot "SmartHome-Setup" (192.168.4.1)
 2. ESP32 pornește → se conectează la "SmartHome-Setup" din NVS (default)
 3. Utilizator deschide app → apasă butonul ⊕ → SetupScreen
 4. Telefon se conectează manual la "SmartHome-Setup"
