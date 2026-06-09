@@ -1,0 +1,13 @@
+# EAS Build are nevoie doar de mobile/ — excludem restul monorepo-ului
+api/
+gateway/
+firmware/
+esp32/
+docs/
+node_modules/
+**/node_modules/
+**/.expo/
+**/dist/
+.git/
+*.log
+.DS_Store
