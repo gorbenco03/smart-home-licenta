@@ -9,6 +9,7 @@ import { useAppStore } from '../store';
 import { T } from '../theme';
 import { Dot, Ring, Sparkline, StatusPill, GasBar } from '../components/ui';
 import { SensorReading } from '../types';
+import { disconnectSocket } from '../services/socket';
 
 // Static sparkline history shapes (will animate via WS updates in future)
 const TREND_TEMP   = [20.5, 21.0, 21.4, 21.8, 22.0, 22.1];
@@ -25,6 +26,12 @@ export default function DashboardScreen() {
   const nodeStatus     = useAppStore((s) => s.nodeStatus);
   const setLatest      = useAppStore((s) => s.setLatestReading);
   const connected      = useAppStore((s) => s.connected);
+  const logout         = useAppStore((s) => s.logout);
+
+  function handleLogout() {
+    disconnectSocket();
+    logout();
+  }
 
   const { data: nodes, isLoading, refetch } = useQuery({
     queryKey: ['nodes'],
@@ -72,7 +79,12 @@ export default function DashboardScreen() {
             <Text style={s.kicker}>ACASĂ</Text>
             <Text style={s.title}>Dashboard</Text>
           </View>
-          <StatusPill kind={connected ? 'live' : 'reconn'} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <StatusPill kind={connected ? 'live' : 'reconn'} />
+            <TouchableOpacity onPress={handleLogout} style={s.logoutBtn} activeOpacity={0.75}>
+              <Text style={s.logoutText}>⏻</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* ── HERO CARD ── */}
@@ -285,6 +297,16 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   title: { fontSize: 30, fontWeight: '600', color: T.text, letterSpacing: -0.8 },
+  logoutBtn: {
+    width: 34, height: 34,
+    borderRadius: 10,
+    backgroundColor: T.surface,
+    borderWidth: 1,
+    borderColor: T.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoutText: { fontSize: 16, color: T.text3 },
 
   // Hero card
   heroCard: {
