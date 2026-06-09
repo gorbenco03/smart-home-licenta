@@ -11,7 +11,7 @@
 | Componentă | Status | Note |
 |------------|--------|------|
 | PostgreSQL pe RPi | ✅ Rulează | Port 5432, user `smarthome`, db `smarthome_db` |
-| Mosquitto MQTT pe RPi | ✅ Rulează | Port 1883, user `smarthome`/`smarthome123` |
+| Mosquitto MQTT pe RPi | ✅ Rulează | Port 1883, user `smarthome`/`smarthome_mqtt_2026` |
 | NestJS API pe RPi | ✅ Rulează via PM2 | Port 3000, process name `smart-home-api` |
 | ESP32 cu DHT11 | ✅ Flashat | Date reale trimise: 28.5°C, 42% umiditate |
 | Mobile app (Expo Go) | ✅ Funcționează | Afișează date reale de la senzor |
@@ -242,8 +242,8 @@ pm2 restart smart-home-api
 pm2 logs smart-home-api --lines 50
 
 # Test MQTT
-mosquitto_sub -h localhost -p 1883 -u smarthome -P smarthome123 -t "smarthome/#" -v
-mosquitto_pub -h localhost -p 1883 -u smarthome -P smarthome123 -t "smarthome/test/sensors" -m '{"nodeId":"test","temperature":25.0}'
+mosquitto_sub -h localhost -p 1883 -u smarthome -P smarthome_mqtt_2026 -t "smarthome/#" -v
+mosquitto_pub -h localhost -p 1883 -u smarthome -P smarthome_mqtt_2026 -t "smarthome/test/sensors" -m '{"nodeId":"test","temperature":25.0}'
 
 # Date din DB
 psql -U smarthome -d smarthome_db -c "SELECT * FROM sensor_readings ORDER BY timestamp DESC LIMIT 5;"

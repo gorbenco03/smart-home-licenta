@@ -45,8 +45,9 @@ export class SetupService {
       }
 
       // Verifică conexiunea WiFi activă
+      // ^wlan0: ca să nu prindem și interfața p2p-dev-wlan0
       const { stdout } = await execAsync(
-        `sudo nmcli -t -f DEVICE,STATE,CONNECTION dev | grep wlan0 || true`
+        `sudo nmcli -t -f DEVICE,STATE,CONNECTION dev | grep '^wlan0:' || true`
       );
       const parts = stdout.trim().split(':');
       if (parts[1] === 'connected') {
