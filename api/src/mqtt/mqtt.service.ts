@@ -34,9 +34,9 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
     this.client.on('connect', () => {
       console.log('[MQTT] Conectat la Mosquitto');
-      this.client.subscribe('home/+/sensors', { qos: 1 });
-      this.client.subscribe('home/alerts',    { qos: 2 });
-      this.client.subscribe('home/+/status',  { qos: 1 });
+      this.client.subscribe('smarthome/+/sensors', { qos: 1 });
+      this.client.subscribe('smarthome/alerts',    { qos: 2 });
+      this.client.subscribe('smarthome/+/status',  { qos: 1 });
     });
 
     this.client.on('message', (topic, payload) => {
@@ -49,7 +49,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
     // Ascultă comenzi din API și le publică pe MQTT
     this.eventEmitter.on('command.sent', ({ nodeId, command }) => {
-      const topic = `home/${nodeId}/commands`;
+      const topic = `smarthome/${nodeId}/commands`;
       this.client?.publish(topic, JSON.stringify(command), { qos: 1 });
     });
   }
@@ -60,16 +60,16 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
       if (topic.endsWith('/sensors')) {
         await this.sensorsService.saveReading({
-          nodeId:      data.node_id,
+          nodeId:      data.nodeId      ?? data.node_id,
           location:    data.location,
-          temperature: data.sensors?.temperature,
-          humidity:    data.sensors?.humidity,
-          gasLevel:    data.sensors?.gas_level,
-          gasAlert:    data.sensors?.gas_alert ?? false,
-          motion:      data.sensors?.motion ?? false,
-          lightLux:    data.sensors?.light_lux,
+          temperature: data.temperature ?? data.sensors?.temperature,
+          humidity:    data.humidity    ?? data.sensors?.humidity,
+          gasLevel:    data.gasLevel    ?? data.sensors?.gas_level,
+          gasAlert:    data.gasAlert    ?? data.sensors?.gas_alert ?? false,
+          motion:      data.motion      ?? data.sensors?.motion ?? false,
+          lightLux:    data.lightLux    ?? data.sensors?.light_lux,
         });
-      } else if (topic === 'home/alerts') {
+      } else if (topic === 'smarthome/alerts') {
         await this.alertsService.create({
           nodeId:    data.node_id,
           alertType: data.alert_type,
@@ -77,7 +77,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
           location:  data.location,
           details:   data.details,
         });
-      } else if (topic.endsWith('/status')) {
+      } else if (topic.endsWith('/status') && topic.startsWith('smarthome/')) {
         await this.sensorsService.updateNodeStatus(data);
       }
     } catch (e) {
