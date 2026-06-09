@@ -40,7 +40,8 @@
               "NSExceptionAllowsInsecureHTTPLoads": true
             }
           }
-        }
+        },
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "plugins": [
@@ -50,7 +51,21 @@
           "icon": "./assets/notification-icon.png",
           "color": "#0f172a"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static",
+            "deploymentTarget": "15.1"
+          }
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e05d0c2b-162f-4c66-8e55-2b83edae462d"
+      }
+    }
   }
 }
