@@ -1,4 +1,4 @@
-# Ghid Conexiuni Software — cele 3 noduri ESP32 ↔ Gateway ↔ Aplicație
+# Ghid Conexiuni Software — nodurile ESP32 ↔ Gateway ↔ Aplicație
 
 > **Document:** 06 — completează [hardware_breadboard_guide.md](hardware_breadboard_guide.md) (pinii fizici)
 > cu tot ce înseamnă **software**: protocoale, topicuri MQTT, payload-uri, firmware, provisioning.
@@ -9,15 +9,15 @@
 ## 1. Arhitectura completă
 
 ```
-┌─────────────────┐   ┌─────────────────┐   ┌──────────────────┐
-│  Nod A (Living) │   │ Nod B (Dormitor)│   │ ESP32-CAM (Hol)  │
-│  esp32_node_a   │   │  esp32_node_b   │   │  esp32_cam_node  │
-│ DHT MQ-2 PIR    │   │ DHT MQ-2 PIR    │   │  OV2640          │
-│ BH1750 4×releu  │   │ BH1750 4×releu  │   │                  │
-│ buzzer servo    │   │ buzzer          │   │                  │
-└───────┬─────────┘   └───────┬─────────┘   └───┬──────────┬───┘
-        │ MQTT 1883           │ MQTT 1883       │MQTT      │HTTP :80
-        ▼                     ▼                 ▼          │/stream /capture
+┌───────────────────────────────────┐   ┌─────────────────────────┐
+│  Nod interior — esp32_node_a      │   │ Curte — esp32_cam_node  │
+│  Bucătărie: MQ-2 gaz + buzzer     │   │  cameră OV2640          │
+│  Living: DHT11, BH1750, servo     │   │  PIR mișcare (GPIO13)   │
+│          perdele, releu 0=lumină  │   │  LED auto 30s (GPIO12)  │
+│  Dormitor: releu 1=lumină         │   │                         │
+└───────────────┬───────────────────┘   └────┬──────────────┬─────┘
+                │ MQTT 1883                  │ MQTT 1883    │ HTTP :80
+                ▼                            ▼              │ /stream /capture
 ┌──────────────────────────────────────────────────┐       │
 │      Raspberry Pi 3B+ — „smarthome.local"        │       │
 │  Mosquitto :1883 → NestJS API :3000 → PG :5432   │       │
@@ -31,6 +31,9 @@
               └─────────────────┘
 ```
 
+> Al doilea ESP32 WROOM rămâne rezervă — sketch-ul nodului e configurabil
+> (3 linii) dacă vrei vreodată un al doilea nod interior.
+
 **Principiu:** nodurile ESP32 vorbesc **doar MQTT** cu RPi. Aplicația vorbește **doar HTTP/WS**
 cu API-ul — excepție camera, pe care app-ul o accesează direct pe HTTP (stream-ul video
 nu are sens să treacă prin RPi).
@@ -41,11 +44,12 @@ nu are sens să treacă prin RPi).
 
 | Placă | Sketch | Config în sketch |
 |---|---|---|
-| Nod A (Living) | `firmware/esp32_node/esp32_node.ino` | `NODE_ID "esp32_node_a"`, `LOCATION "living"`, `HAS_SERVO 1` |
-| Nod B (Dormitor) | **același sketch** | `NODE_ID "esp32_node_b"`, `LOCATION "dormitor"`, `HAS_SERVO 0` |
-| Camera (Hol) | `firmware/esp32_cam/esp32_cam.ino` | nimic de schimbat |
+| Nod interior | `firmware/esp32_node/esp32_node.ino` | implicit: `NODE_ID "esp32_node_a"`, `LOCATION "interior"`, `HAS_SERVO 1` |
+| Camera (curte) | `firmware/esp32_cam/esp32_cam.ino` | nimic de schimbat |
 
-> Un singur firmware pentru A și B — diferă **doar 3 linii** din secțiunea `CONFIG NOD`.
+Maparea releelor pe nodul interior: **releu 0 = lumină living (GPIO26)**,
+**releu 1 = lumină dormitor (GPIO25)**; GPIO33/32 rămân libere pentru extinderi.
+
 > `firmware/esp32_dht11/` este versiunea veche (doar DHT11), păstrată ca referință istorică.
 > Folderul `esp32/` (MicroPython) este abordarea abandonată — nu se mai folosește.
 

@@ -10,8 +10,7 @@ import { SensorReading } from '../types';
 import { T } from '../theme';
 
 const NODES = [
-  { id: 'esp32_node_a', label: 'Living' },
-  { id: 'esp32_node_b', label: 'Dormitor' },
+  { id: 'esp32_node_a', label: 'Interior' },
 ];
 
 const METRICS: Array<{ key: keyof SensorReading; label: string; color: string; unit: string }> = [

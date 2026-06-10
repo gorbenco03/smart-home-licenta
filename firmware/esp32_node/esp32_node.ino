@@ -1,13 +1,19 @@
 /*
- * Smart Home — Firmware nod senzori/actuatori (ESP32 WROOM-32)
+ * Smart Home — Firmware nodul interior (ESP32 WROOM-32)
  * ─────────────────────────────────────────────────────────────
- * Un singur sketch pentru ambele noduri. Pentru Nodul B schimbă
- * doar secțiunea CONFIG NOD de mai jos (NODE_ID, LOCATION, HAS_SERVO).
+ * Un singur nod acoperă interiorul casei:
+ *   Bucătărie: MQ-2 (gaz) + buzzer (alarmă)
+ *   Living:    DHT11 (temp/umid), BH1750 (lux), servo perdele,
+ *              releu 0 = lumină living
+ *   Dormitor:  releu 1 = lumină dormitor
  *
- * Senzori:   DHT22/DHT11 (GPIO4), MQ-2 (GPIO34 analog), PIR (GPIO27),
- *            BH1750 lux (I2C: SDA=21, SCL=22)
- * Actuatori: 4x releu (GPIO26,25,33,32), buzzer (GPIO5),
- *            servo SG90 (GPIO18, doar Nodul A)
+ * Senzori:   DHT11/DHT22 (GPIO4), MQ-2 (GPIO34 analog),
+ *            BH1750 lux (I2C: SDA=21, SCL=22), PIR opțional (GPIO27)
+ * Actuatori: relee (GPIO26=living, GPIO25=dormitor, 33/32 libere),
+ *            buzzer (GPIO5), servo SG90 (GPIO18)
+ *
+ * Sketch-ul rămâne configurabil: pentru un al doilea nod identic
+ * schimbă doar secțiunea CONFIG NOD (NODE_ID, LOCATION, HAS_SERVO).
  *
  * Librării (Arduino IDE → Library Manager):
  *   - DHT sensor library (Adafruit) + Adafruit Unified Sensor
@@ -33,9 +39,9 @@
 #include <Preferences.h>
 
 /* ══ CONFIG NOD — singura secțiune de modificat între noduri ══ */
-#define NODE_ID    "esp32_node_a"   // Nodul B: "esp32_node_b"
-#define LOCATION   "living"         // Nodul B: "dormitor"
-#define HAS_SERVO  1                // Nodul B: 0 (fără perdele)
+#define NODE_ID    "esp32_node_a"
+#define LOCATION   "interior"
+#define HAS_SERVO  1
 /* ═════════════════════════════════════════════════════════════ */
 
 #if HAS_SERVO

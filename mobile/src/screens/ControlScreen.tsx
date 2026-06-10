@@ -14,16 +14,14 @@ import { CAMERA_STREAM_URL, CAMERA_SNAPSHOT_URL } from '../services/config';
 
 /* ─── Constante nod ──────────────────────────────── */
 
-const SENSOR_NODE_ID = 'esp32_node_a';  // nod cu senzori + servo + relee
-const CAM_NODE_ID    = 'esp32_cam_node'; // nod cu cameră
+const SENSOR_NODE_ID = 'esp32_node_a';   // nodul interior (bucătărie/living/dormitor)
+const CAM_NODE_ID    = 'esp32_cam_node'; // camera din curte
 
 type IonName = keyof typeof Ionicons.glyphMap;
 
 const RELAY_DEFS: Array<{ index: number; label: string; icon: IonName }> = [
-  { index: 0, label: 'Lumină principală', icon: 'bulb' },
-  { index: 1, label: 'Ventilator',        icon: 'sync' },
-  { index: 2, label: 'Priză 1',           icon: 'flash' },
-  { index: 3, label: 'Priză 2',           icon: 'flash' },
+  { index: 0, label: 'Lumină living',   icon: 'bulb' },
+  { index: 1, label: 'Lumină dormitor', icon: 'bulb' },
 ];
 
 type SceneKey = 'acasa' | 'plec' | 'noapte' | 'cinema';
@@ -88,25 +86,17 @@ export default function ControlScreen() {
         {/* ── Servo — perdele ──────────────────── */}
         <ServoCard nodeId={SENSOR_NODE_ID} online={nodeStatus[SENSOR_NODE_ID] ?? false} />
 
-        {/* ── Relee Living ─────────────────────── */}
+        {/* ── Lumini ───────────────────────────── */}
         <RelayCard
           nodeId={SENSOR_NODE_ID}
-          label="Living / Bucătărie"
+          label="Lumini"
           online={nodeStatus[SENSOR_NODE_ID] ?? false}
-          defaultRelays={{ 0: true, 1: false, 2: false, 3: false }}
-        />
-
-        {/* ── Relee Dormitor ───────────────────── */}
-        <RelayCard
-          nodeId="esp32_node_b"
-          label="Dormitor / Baie"
-          online={nodeStatus['esp32_node_b'] ?? false}
-          defaultRelays={{ 0: false, 1: false, 2: true, 3: false }}
+          defaultRelays={{ 0: false, 1: false }}
         />
 
         {/* ── Quick actions ─────────────────────── */}
         <View style={s.quickRow}>
-          <QuickActionButton icon="notifications" label="Test sonerie" nodeId={SENSOR_NODE_ID} action="buzzer_beep" />
+          <QuickActionButton icon="notifications" label="Test alarmă" nodeId={SENSOR_NODE_ID} action="buzzer_beep" />
           <QuickActionButton icon="power" label="Oprire totală" nodeId={SENSOR_NODE_ID} action="all_off" danger />
         </View>
       </ScrollView>
@@ -123,7 +113,7 @@ export default function ControlScreen() {
               <Ionicons name="close" size={16} color={T.accent} />
               <Text style={sm.closeText}>Închide</Text>
             </TouchableOpacity>
-            <Text style={sm.toolbarTitle}>Camera Hol — Live</Text>
+            <Text style={sm.toolbarTitle}>Curte — Live</Text>
           </View>
           <WebView
             source={{ uri: CAMERA_STREAM_URL }}
@@ -165,7 +155,7 @@ function CameraCard({ onOpenStream }: { onOpenStream: () => void }) {
             <Ionicons name="videocam" size={16} color={T.accent} />
           </View>
           <View>
-            <Text style={cc.label}>Camera Hol</Text>
+            <Text style={cc.label}>Curte</Text>
             <Text style={cc.subLabel}>Supraveghere live</Text>
           </View>
         </View>

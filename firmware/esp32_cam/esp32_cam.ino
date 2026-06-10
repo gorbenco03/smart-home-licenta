@@ -1,12 +1,15 @@
 /*
- * Smart Home — Firmware ESP32-CAM AI-Thinker (Nodul cameră, Hol)
+ * Smart Home — Firmware ESP32-CAM AI-Thinker (Nodul curte/exterior)
  * ──────────────────────────────────────────────────────────────
- * Servește:
+ * Supraveghere curte:
  *   GET /capture  — snapshot JPEG (folosit de aplicație la 5s)
  *   GET /stream   — stream MJPEG live (modalul „Vezi live")
+ *   PIR (GPIO13)  — detecție mișcare, publicată pe MQTT
+ *   LED (GPIO12)  — se aprinde automat 30s la mișcare (proiector
+ *                   prin tranzistor/releu, sau LED simplu la demo)
  *
  * Plus: status MQTT online/offline (LWT) ca nodul să apară în app,
- * și wifi_update prin MQTT pentru provisioning, ca celelalte noduri.
+ * și wifi_update prin MQTT pentru provisioning, ca celălalt nod.
  *
  * Placa în Arduino IDE: "AI Thinker ESP32-CAM"
  * (Tools → Board → esp32 → AI Thinker ESP32-CAM, PSRAM: Enabled)
@@ -26,7 +29,15 @@
 #include "esp_http_server.h"
 
 #define NODE_ID   "esp32_cam_node"
-#define LOCATION  "hol"
+#define LOCATION  "curte"
+
+// ── PIR + LED exterior ─────────────────────────────────────
+// GPIO12/13 sunt printre puținii pini liberi pe AI-Thinker.
+// Atenție: GPIO12 trebuie să fie LOW la boot (strapping pin) —
+// LED-ul/tranzistorul tras la GND e exact ce trebuie.
+#define PIR_PIN        13
+#define LED_PIN        12
+#define LED_ON_MS      30000   // LED aprins 30s după ultima mișcare
 
 // ── WiFi provisioning (identic cu nodurile senzori) ───────
 #define DEFAULT_WIFI_SSID  "SmartHome-Setup"
@@ -61,7 +72,10 @@ Preferences prefs;
 httpd_handle_t httpServer = NULL;
 
 String wifiSsid, wifiPass, mqttHost;
-unsigned long lastStatus = 0;
+unsigned long lastStatus  = 0;
+unsigned long lastMotion  = 0;     // ultimul moment cu mișcare
+unsigned long lastPublish = 0;
+bool ledOn = false;
 
 /* ─── NVS (același namespace ca nodurile senzori) ─────────── */
 void loadCredentials() {
@@ -265,6 +279,10 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n[Boot] Smart Home — " NODE_ID " (" LOCATION ")");
 
+  pinMode(PIR_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
   if (!initCamera()) {
     Serial.println("[Cameră] Inițializare eșuată — restart în 5s");
     delay(5000);
@@ -283,6 +301,33 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED) connectWifi();
   if (!mqtt.connected()) connectMqtt();
   mqtt.loop();
+
+  // ── Mișcare în curte → LED aprins + raportare ──
+  bool motion = digitalRead(PIR_PIN) == HIGH;
+  if (motion) {
+    lastMotion = millis();
+    if (!ledOn) {
+      digitalWrite(LED_PIN, HIGH);
+      ledOn = true;
+      Serial.println("[Curte] Mișcare — LED aprins");
+    }
+  }
+  if (ledOn && millis() - lastMotion >= LED_ON_MS) {
+    digitalWrite(LED_PIN, LOW);
+    ledOn = false;
+  }
+
+  // Publică starea de mișcare la 5s (apare în app ca nod „curte")
+  if (millis() - lastPublish >= 5000) {
+    lastPublish = millis();
+    StaticJsonDocument<128> doc;
+    doc["nodeId"]   = NODE_ID;
+    doc["location"] = LOCATION;
+    doc["motion"]   = motion;
+    char payload[128];
+    serializeJson(doc, payload);
+    mqtt.publish("smarthome/" NODE_ID "/sensors", payload);
+  }
 
   // Re-publică statusul la 30s (heartbeat pentru lastSeen)
   if (millis() - lastStatus >= 30000) {
