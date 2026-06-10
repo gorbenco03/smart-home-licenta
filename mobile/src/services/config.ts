@@ -20,7 +20,7 @@ export const HOTSPOT_HOST = 'http://192.168.4.1:3000';
 export const HOTSPOT_API = `${HOTSPOT_HOST}/api`;
 
 // ── ESP32-CAM ─────────────────────────────────────────────
-// Schimbă după ce ESP32-CAM e conectat la WiFi și îi afli IP-ul
-export const CAMERA_HOST         = process.env.EXPO_PUBLIC_CAMERA_HOST ?? 'http://192.168.1.50';
+// Camera se anunță prin mDNS — funcționează pe orice rețea, fără IP fix
+export const CAMERA_HOST         = process.env.EXPO_PUBLIC_CAMERA_HOST ?? 'http://smarthome-cam.local';
 export const CAMERA_STREAM_URL   = `${CAMERA_HOST}/stream`;
 export const CAMERA_SNAPSHOT_URL = `${CAMERA_HOST}/capture`;

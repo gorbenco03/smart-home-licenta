@@ -108,11 +108,13 @@ export class SetupService {
     this.logger.log(`[Setup] Conectare la rețeaua: ${ssid}`);
 
     try {
-      // Trimite credențialele la ESP32 înainte să ne deconectăm
-      this.eventEmitter.emit('command.sent', {
-        nodeId: 'esp32_node_a',
-        command: { action: 'wifi_update', ssid, password },
-      });
+      // Trimite credențialele către TOATE nodurile înainte să ne deconectăm
+      for (const nodeId of ['esp32_node_a', 'esp32_cam_node']) {
+        this.eventEmitter.emit('command.sent', {
+          nodeId,
+          command: { action: 'wifi_update', ssid, password },
+        });
+      }
 
       // Oprește hotspot-ul dacă e activ
       await execAsync(`sudo nmcli con down "${SetupService.HOTSPOT_CON}" || true`);

@@ -208,12 +208,6 @@ void connectWifi() {
 String resolveMqttHost() {
   if (!mqttHost.endsWith(".local")) return mqttHost;
   String name = mqttHost.substring(0, mqttHost.length() - 6);
-  static bool mdnsStarted = false;
-  if (!mdnsStarted) {
-    // și camera devine accesibilă ca smarthome-cam.local
-    if (!MDNS.begin("smarthome-cam")) return DEFAULT_MQTT_HOST;
-    mdnsStarted = true;
-  }
   for (int i = 0; i < 5; i++) {
     IPAddress ip = MDNS.queryHost(name.c_str(), 3000);
     if (ip != IPAddress(0, 0, 0, 0)) return ip.toString();
@@ -291,6 +285,13 @@ void setup() {
 
   loadCredentials();
   connectWifi();
+
+  // Camera devine accesibilă ca http://smarthome-cam.local pe orice rețea
+  if (MDNS.begin("smarthome-cam")) {
+    MDNS.addService("http", "tcp", 80);
+    Serial.println("[mDNS] smarthome-cam.local activ");
+  }
+
   startHttpServer();
   connectMqtt();
   Serial.printf("[Boot] Gata! Stream: http://%s/stream\n",
