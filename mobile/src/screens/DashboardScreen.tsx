@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, StyleSheet,
   RefreshControl, TouchableOpacity,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { useAppStore } from '../store';
@@ -94,10 +95,10 @@ export default function DashboardScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <StatusPill kind={connected ? 'live' : 'reconn'} />
             <TouchableOpacity onPress={() => navigation.navigate('Setup')} style={s.logoutBtn} activeOpacity={0.75}>
-              <Text style={s.logoutText}>⊕</Text>
+              <Ionicons name="wifi-outline" size={17} color={T.text2} />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleLogout} style={s.logoutBtn} activeOpacity={0.75}>
-              <Text style={s.logoutText}>⏻</Text>
+              <Ionicons name="power" size={16} color={T.text2} />
             </TouchableOpacity>
           </View>
         </View>
@@ -109,14 +110,16 @@ export default function DashboardScreen() {
 
           <View style={s.heroTop}>
             <View style={{ flex: 1 }}>
-              <Text style={s.heroKicker}>STATUS GENERAL</Text>
+              <Text style={s.heroKicker}>Status general</Text>
               <Text style={[s.heroTitle, anyGas && { color: T.dangerHi }]}>
-                {anyGas ? 'Atenție · Gaz' : 'Totul în regulă'}
+                {anyGas ? 'Alertă gaz' : 'Totul în regulă'}
               </Text>
               <Text style={s.heroSub}>
                 {anyGas
-                  ? `Senzor MQ-2 · ${maxGas} ADC`
-                  : `${onlineCount} din ${(nodes ?? []).length} noduri conectate`}
+                  ? 'Nivelul de gaz a depășit pragul de siguranță'
+                  : onlineCount === (nodes ?? []).length
+                    ? 'Toate camerele sunt online'
+                    : `${onlineCount} din ${(nodes ?? []).length} camere online`}
               </Text>
             </View>
             <Ring
@@ -126,7 +129,7 @@ export default function DashboardScreen() {
               stroke={7}
               color={anyGas ? T.danger : T.success}
               track="rgba(255,255,255,0.06)"
-              label={anyGas ? 'GAZ' : 'SAFE'}
+              label={anyGas ? 'Gaz' : 'Sigur'}
               unit={anyGas ? '' : '%'}
             />
           </View>
@@ -134,30 +137,30 @@ export default function DashboardScreen() {
           {/* Mini stats row */}
           <View style={s.miniRow}>
             <MiniStat
-              label="TEMP"
+              label="Temp"
               value={avgTemp != null ? avgTemp.toFixed(1) : '—'}
               unit="°C"
               trend={TREND_TEMP}
               color={T.warning}
             />
             <MiniStat
-              label="UMID"
+              label="Umiditate"
               value={avgHumid != null ? Math.round(avgHumid).toString() : '—'}
               unit="%"
               trend={TREND_HUMID}
               color={T.info}
             />
             <MiniStat
-              label="LUX"
+              label="Lumină"
               value={avgLux != null ? Math.round(avgLux).toString() : '—'}
-              unit=""
+              unit="lx"
               trend={TREND_LUX}
               color={T.violet}
             />
             <MiniStat
-              label="GAZ"
-              value={maxGas != null ? maxGas.toString() : '—'}
-              unit="ADC"
+              label="Aer"
+              value={anyGas ? 'Atenție' : 'Curat'}
+              unit=""
               trend={anyGas ? [150, 200, 280, 350, 400, maxGas ?? 400] : TREND_GAS_OK}
               color={anyGas ? T.danger : T.success}
             />
@@ -166,7 +169,7 @@ export default function DashboardScreen() {
 
         {/* ── CAMERAS HEADER ── */}
         <View style={s.sectionRow}>
-          <Text style={s.sectionLabel}>CAMERELE</Text>
+          <Text style={s.sectionLabel}>Camere</Text>
           <Text style={s.sectionMeta}>{onlineCount} din {(nodes ?? []).length} online</Text>
         </View>
 
@@ -212,10 +215,10 @@ function MiniStat({
 
 const ms = StyleSheet.create({
   wrap: { flex: 1, paddingHorizontal: 4, paddingVertical: 2 },
-  label: { fontFamily: 'Courier New', fontSize: 9.5, color: T.text3, letterSpacing: 1, marginBottom: 4 },
+  label: { fontSize: 12, fontWeight: '500', color: T.text3, marginBottom: 4 },
   valRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, marginBottom: 4 },
-  val: { fontFamily: 'Courier New', fontSize: 17, fontWeight: '500', color: T.text, letterSpacing: -0.5 },
-  unit: { fontFamily: 'Courier New', fontSize: 10, color: T.text3, paddingBottom: 2 },
+  val: { fontSize: 18, fontWeight: '600', color: T.text, letterSpacing: -0.3, fontVariant: ['tabular-nums'] },
+  unit: { fontSize: 12, color: T.text3, paddingBottom: 2 },
 });
 
 /* ── ROOM TILE ───────────────────────────────────── */
@@ -229,7 +232,7 @@ function RoomTile({
       <View style={rt.header}>
         <View style={{ flex: 1 }}>
           <Text style={rt.name}>{name.charAt(0).toUpperCase() + name.slice(1)}</Text>
-          <Text style={rt.nodeId}>{nodeId}</Text>
+          <Text style={rt.subLabel}>{online ? 'Online' : 'Offline'}</Text>
         </View>
         <Dot color={online ? T.success : T.text4} size={7} />
       </View>
@@ -243,7 +246,7 @@ function RoomTile({
             <Text style={rt.tempUnit}>°C</Text>
           </View>
           <View style={rt.meta}>
-            <Text style={rt.metaText}>{reading.humidity?.toFixed(0) ?? '—'}% umid.</Text>
+            <Text style={rt.metaText}>{reading.humidity?.toFixed(0) ?? '—'}% umiditate</Text>
             <View style={rt.dot2} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Dot
@@ -256,7 +259,7 @@ function RoomTile({
             </View>
           </View>
           <Text style={rt.ts}>
-            {nodeId} · {new Date(reading.time).toLocaleTimeString('ro-RO')}
+            {new Date(reading.time).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </>
       ) : (
@@ -280,16 +283,16 @@ const rt = StyleSheet.create({
   offline: { opacity: 0.5 },
   alertStripe: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: T.danger },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
-  name: { fontSize: 15, fontWeight: '600', color: T.text, letterSpacing: -0.2 },
-  nodeId: { fontSize: 10, color: T.text3, marginTop: 2, fontFamily: 'Courier New' },
+  name: { fontSize: 16, fontWeight: '600', color: T.text, letterSpacing: -0.2 },
+  subLabel: { fontSize: 12, color: T.text3, marginTop: 2 },
   tempRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, marginBottom: 6 },
-  temp: { fontFamily: 'Courier New', fontSize: 28, fontWeight: '400', color: T.text, letterSpacing: -1, lineHeight: 30 },
-  tempUnit: { fontFamily: 'Courier New', fontSize: 13, color: T.text3, paddingBottom: 3 },
+  temp: { fontSize: 32, fontWeight: '600', color: T.text, letterSpacing: -1, lineHeight: 34, fontVariant: ['tabular-nums'] },
+  tempUnit: { fontSize: 14, color: T.text3, paddingBottom: 4 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   dot2: { width: 2, height: 2, borderRadius: 1, backgroundColor: T.text4 },
-  metaText: { fontFamily: 'Courier New', fontSize: 11, color: T.text2 },
-  ts: { fontFamily: 'Courier New', fontSize: 9.5, color: T.text4, letterSpacing: 0.2 },
-  noData: { fontFamily: 'Courier New', fontSize: 12, color: T.text3, textAlign: 'center', paddingVertical: 16 },
+  metaText: { fontSize: 12, color: T.text2 },
+  ts: { fontSize: 12, color: T.text4 },
+  noData: { fontSize: 13, color: T.text3, textAlign: 'center', paddingVertical: 16 },
 });
 
 const s = StyleSheet.create({
@@ -304,14 +307,14 @@ const s = StyleSheet.create({
     paddingBottom: 16,
   },
   kicker: {
-    fontFamily: 'Courier New',
-    fontSize: 11,
+    fontSize: 12,
+    fontWeight: '600',
     color: T.text3,
-    letterSpacing: 1.4,
+    letterSpacing: 1,
     textTransform: 'uppercase',
     marginBottom: 4,
   },
-  title: { fontSize: 30, fontWeight: '600', color: T.text, letterSpacing: -0.8 },
+  title: { fontSize: 30, fontWeight: '700', color: T.text, letterSpacing: -0.8 },
   logoutBtn: {
     width: 34, height: 34,
     borderRadius: 10,
@@ -321,7 +324,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoutText: { fontSize: 16, color: T.text3 },
 
   // Hero card
   heroCard: {
@@ -343,9 +345,9 @@ const s = StyleSheet.create({
   },
   heroGlowAlert: { backgroundColor: 'rgba(219,106,94,0.14)' },
   heroTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 },
-  heroKicker: { fontFamily: 'Courier New', fontSize: 11, color: T.text3, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 6 },
-  heroTitle: { fontSize: 26, fontWeight: '600', letterSpacing: -0.6, color: T.text, marginBottom: 4 },
-  heroSub: { fontSize: 13, color: T.text2, maxWidth: 200 },
+  heroKicker: { fontSize: 12, fontWeight: '600', color: T.text3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },
+  heroTitle: { fontSize: 26, fontWeight: '700', letterSpacing: -0.6, color: T.text, marginBottom: 4 },
+  heroSub: { fontSize: 14, color: T.text2, maxWidth: 210, lineHeight: 19 },
 
   miniRow: {
     flexDirection: 'row',
@@ -364,8 +366,8 @@ const s = StyleSheet.create({
     paddingBottom: 10,
     paddingTop: 6,
   },
-  sectionLabel: { fontFamily: 'Courier New', fontSize: 11, color: T.text3, letterSpacing: 1.2, textTransform: 'uppercase' },
-  sectionMeta:  { fontFamily: 'Courier New', fontSize: 11, color: T.text3 },
+  sectionLabel: { fontSize: 12, fontWeight: '600', color: T.text3, letterSpacing: 1, textTransform: 'uppercase' },
+  sectionMeta:  { fontSize: 12, color: T.text3 },
 
   tilesGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 18, gap: 10 },
   empty: { color: T.text4, textAlign: 'center', fontSize: 14, marginTop: 40, lineHeight: 22, width: '100%' },

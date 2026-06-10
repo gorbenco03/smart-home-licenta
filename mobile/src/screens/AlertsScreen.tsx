@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, FlatList,
   TouchableOpacity, ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { useAppStore } from '../store';
@@ -16,12 +17,14 @@ const SEV_COLOR: Record<string, string> = {
   critical: T.danger,
 };
 
-const ALERT_META: Record<string, { title: string; icon: string }> = {
-  GAS_DETECTED: { title: 'Gaz detectat',          icon: '🔥' },
-  MOTION_NIGHT: { title: 'Mișcare nocturnă',       icon: '👁' },
-  ML_ANOMALY:   { title: 'Anomalie ML',            icon: '🤖' },
-  ALERT_HEAT:   { title: 'Temperatură ridicată',   icon: '🌡' },
-  ALERT_COLD:   { title: 'Temperatură scăzută',    icon: '❄️' },
+type IonName = keyof typeof Ionicons.glyphMap;
+
+const ALERT_META: Record<string, { title: string; icon: IonName }> = {
+  GAS_DETECTED: { title: 'Gaz detectat',          icon: 'flame' },
+  MOTION_NIGHT: { title: 'Mișcare nocturnă',       icon: 'eye' },
+  ML_ANOMALY:   { title: 'Comportament neobișnuit', icon: 'analytics' },
+  ALERT_HEAT:   { title: 'Temperatură ridicată',   icon: 'thermometer' },
+  ALERT_COLD:   { title: 'Temperatură scăzută',    icon: 'snow' },
 };
 
 type FilterKey = 'all' | 'unread' | 'critical';
@@ -68,7 +71,7 @@ export default function AlertsScreen() {
       {/* Header */}
       <View style={s.header}>
         <View>
-          <Text style={s.kicker}>SISTEM</Text>
+          <Text style={s.kicker}>Siguranță</Text>
           <Text style={s.title}>Alerte</Text>
         </View>
         {unreadCount > 0 && (
@@ -125,10 +128,10 @@ export default function AlertsScreen() {
 function AlertRow({
   item, isLast, onAck,
 }: { item: AlertItem; isLast: boolean; onAck: () => void }) {
-  const meta = ALERT_META[item.alertType] ?? { title: item.alertType, icon: '●' };
+  const meta = ALERT_META[item.alertType] ?? { title: item.alertType, icon: 'alert-circle' as IonName };
   const c    = SEV_COLOR[item.severity] ?? T.text3;
   const details = item.details
-    ? Object.entries(item.details).map(([k, v]) => `${k}: ${v}`).join(' · ')
+    ? Object.values(item.details).join(' · ')
     : null;
 
   return (
@@ -142,17 +145,20 @@ function AlertRow({
       <View style={[ar.card, { borderLeftColor: c }]}>
         <View style={ar.cardHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontSize: 15 }}>{meta.icon}</Text>
+            <Ionicons name={meta.icon} size={15} color={c} />
             <Text style={[ar.cardTitle, { color: c }]}>{meta.title}</Text>
           </View>
           {!item.acknowledged && (
             <TouchableOpacity style={ar.ackBtn} onPress={onAck} activeOpacity={0.7}>
-              <Text style={ar.ackIcon}>✓</Text>
+              <Ionicons name="checkmark" size={15} color={T.success} />
             </TouchableOpacity>
           )}
         </View>
         <Text style={ar.meta}>
-          {item.location?.toUpperCase()} · {new Date(item.time).toLocaleString('ro-RO')}
+          {item.location ? item.location.charAt(0).toUpperCase() + item.location.slice(1) + ' · ' : ''}
+          {new Date(item.time).toLocaleString('ro-RO', {
+            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+          })}
         </Text>
         {details && <Text style={ar.details}>{details}</Text>}
       </View>
@@ -196,9 +202,9 @@ const ar = StyleSheet.create({
     ...T.shadow,
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  cardTitle: { fontSize: 13.5, fontWeight: '600', letterSpacing: -0.1 },
-  meta: { fontFamily: 'Courier New', fontSize: 10.5, color: T.text3, letterSpacing: 0.3, marginTop: 6 },
-  details: { fontFamily: 'Courier New', fontSize: 10.5, color: T.text2, marginTop: 6, letterSpacing: 0.2 },
+  cardTitle: { fontSize: 14.5, fontWeight: '600', letterSpacing: -0.1 },
+  meta: { fontSize: 12, color: T.text3, marginTop: 6 },
+  details: { fontSize: 13, color: T.text2, marginTop: 6, lineHeight: 18 },
   ackBtn: {
     width: 26, height: 26, borderRadius: 13,
     backgroundColor: T.successSoft,
@@ -206,7 +212,6 @@ const ar = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  ackIcon: { fontSize: 13, color: T.success, fontWeight: '700' },
 });
 
 const s = StyleSheet.create({
@@ -219,8 +224,8 @@ const s = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 14,
   },
-  kicker: { fontFamily: 'Courier New', fontSize: 11, color: T.text3, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 4 },
-  title: { fontSize: 30, fontWeight: '600', color: T.text, letterSpacing: -0.8 },
+  kicker: { fontSize: 12, fontWeight: '600', color: T.text3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
+  title: { fontSize: 30, fontWeight: '700', color: T.text, letterSpacing: -0.8 },
   unreadBadge: {
     paddingHorizontal: 12, paddingVertical: 5,
     borderRadius: 999,
@@ -228,7 +233,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: T.dangerLine,
     marginTop: 8,
   },
-  unreadText: { fontFamily: 'Courier New', fontSize: 11, fontWeight: '600', color: T.dangerHi },
+  unreadText: { fontSize: 12, fontWeight: '600', color: T.dangerHi },
 
   filterWrap: { paddingHorizontal: 18, marginBottom: 14 },
   filterRow: {
@@ -243,7 +248,7 @@ const s = StyleSheet.create({
     gap: 6, paddingVertical: 8, borderRadius: 8,
   },
   filterChipActive: { backgroundColor: T.surface3 },
-  filterText: { fontSize: 12.5, fontWeight: '500', color: T.text2 },
+  filterText: { fontSize: 13, fontWeight: '500', color: T.text2 },
   filterTextActive: { color: T.text, fontWeight: '600' },
   filterCount: {
     paddingHorizontal: 6, paddingVertical: 1,
@@ -251,7 +256,7 @@ const s = StyleSheet.create({
     backgroundColor: T.surface2,
   },
   filterCountActive: { backgroundColor: T.accentSoft },
-  filterCountText: { fontFamily: 'Courier New', fontSize: 10, fontWeight: '600', color: T.text3 },
+  filterCountText: { fontSize: 12, fontWeight: '600', color: T.text3 },
   filterCountTextActive: { color: T.accent },
 
   list: { paddingHorizontal: 22, paddingBottom: 110 },

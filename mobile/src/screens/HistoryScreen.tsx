@@ -52,27 +52,26 @@ export default function HistoryScreen() {
       <ScrollView contentContainerStyle={s.content}>
         {/* Header */}
         <View style={s.header}>
-          <Text style={s.kicker}>SENZORI</Text>
+          <Text style={s.kicker}>Senzori</Text>
           <Text style={s.title}>Istoric</Text>
         </View>
 
         {/* Selectors */}
         <View style={s.selectors}>
           <ChipRow
-            label="NOD"
+            label="Cameră"
             options={NODES.map(n => n.label)}
             activeIdx={NODES.findIndex(n => n.id === nodeId)}
             onSelect={i => setNodeId(NODES[i].id)}
           />
           <ChipRow
-            label="INTERVAL"
+            label="Interval"
             options={RANGES.map(r => r.label)}
             activeIdx={RANGES.indexOf(range)}
             onSelect={i => setRange(RANGES[i])}
-            mono
           />
           <ChipRow
-            label="METRICĂ"
+            label="Mărime"
             options={METRICS.map(m => m.label)}
             activeIdx={METRICS.indexOf(metric)}
             onSelect={i => setMetric(METRICS[i])}
@@ -83,10 +82,10 @@ export default function HistoryScreen() {
 
         {/* Stat tiles */}
         <View style={s.statRow}>
-          <StatTile label="CURENT" value={lastV?.toFixed(1) ?? '—'} unit={metric.unit} color={metric.color} big />
-          <StatTile label="MIN"    value={values.length ? minV.toFixed(1) : '—'} unit={metric.unit} />
-          <StatTile label="MAX"    value={values.length ? maxV.toFixed(1) : '—'} unit={metric.unit} />
-          <StatTile label="MED"    value={avgV != null ? avgV.toFixed(1) : '—'} unit={metric.unit} />
+          <StatTile label="Acum"  value={lastV?.toFixed(1) ?? '—'} unit={metric.unit} color={metric.color} big />
+          <StatTile label="Min"   value={values.length ? minV.toFixed(1) : '—'} unit={metric.unit} />
+          <StatTile label="Max"   value={values.length ? maxV.toFixed(1) : '—'} unit={metric.unit} />
+          <StatTile label="Mediu" value={avgV != null ? avgV.toFixed(1) : '—'} unit={metric.unit} />
         </View>
 
         {/* Chart */}
@@ -95,14 +94,14 @@ export default function HistoryScreen() {
         ) : values.length > 1 ? (
           <View style={s.chartCard}>
             <View style={s.chartHeader}>
-              <Text style={s.chartTitle}>{metric.label} · {metric.unit}</Text>
+              <Text style={s.chartTitle}>{metric.label} ({metric.unit})</Text>
               <View style={s.legend}>
-                <LegendSwatch color={metric.color} label="azi" />
+                <LegendSwatch color={metric.color} label={`ultimele ${range.label}`} />
               </View>
             </View>
             <BigChart values={values} color={metric.color} />
             <View style={s.xAxis}>
-              {['início', '', '', '', 'agora'].map((t, i) => (
+              {[`acum ${range.label}`, '', '', '', 'acum'].map((t, i) => (
                 <Text key={i} style={s.xLabel}>{t}</Text>
               ))}
             </View>
@@ -117,13 +116,12 @@ export default function HistoryScreen() {
 
 /* ── CHIP ROW ──────────────────────────────────────── */
 function ChipRow({
-  label, options, activeIdx, onSelect, mono, colored, colors,
+  label, options, activeIdx, onSelect, colored, colors,
 }: {
   label: string;
   options: string[];
   activeIdx: number;
   onSelect: (i: number) => void;
-  mono?: boolean;
   colored?: boolean;
   colors?: string[];
 }) {
@@ -146,7 +144,6 @@ function ChipRow({
             >
               <Text style={[
                 cr.pillText,
-                { fontFamily: mono ? 'Courier New' : undefined },
                 on && { color: c ?? T.text, fontWeight: '600' },
               ]}>
                 {o}
@@ -161,7 +158,7 @@ function ChipRow({
 
 const cr = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  label: { fontFamily: 'Courier New', fontSize: 9.5, color: T.text3, letterSpacing: 1.2, width: 52 },
+  label: { fontSize: 12, fontWeight: '500', color: T.text3, width: 60 },
   pills: {
     flex: 1, flexDirection: 'row',
     backgroundColor: T.surface,
@@ -174,7 +171,7 @@ const cr = StyleSheet.create({
     borderRadius: 10, borderWidth: 1, borderColor: 'transparent',
   },
   pillActive: { backgroundColor: T.surface3 },
-  pillText: { fontSize: 12.5, fontWeight: '500', color: T.text2 },
+  pillText: { fontSize: 13, fontWeight: '500', color: T.text2 },
 });
 
 /* ── STAT TILE ─────────────────────────────────────── */
@@ -184,7 +181,7 @@ function StatTile({ label, value, unit, color = T.text2, big }:
     <View style={st.tile}>
       <Text style={st.label}>{label}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 1, marginTop: 4 }}>
-        <Text style={[st.val, big && { fontSize: 19, color }]}>{value}</Text>
+        <Text style={[st.val, big && { fontSize: 20, color }]}>{value}</Text>
         <Text style={st.unit}>{unit}</Text>
       </View>
     </View>
@@ -197,9 +194,9 @@ const st = StyleSheet.create({
     borderRadius: 14, padding: 10,
     borderWidth: 1, borderColor: T.border,
   },
-  label: { fontFamily: 'Courier New', fontSize: 9, color: T.text3, letterSpacing: 1.2 },
-  val: { fontFamily: 'Courier New', fontSize: 16, fontWeight: '500', color: T.text, letterSpacing: -0.5 },
-  unit: { fontFamily: 'Courier New', fontSize: 9.5, color: T.text3, paddingBottom: 2 },
+  label: { fontSize: 12, fontWeight: '500', color: T.text3 },
+  val: { fontSize: 17, fontWeight: '600', color: T.text, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
+  unit: { fontSize: 12, color: T.text3, paddingBottom: 2 },
 });
 
 /* ── LEGEND ────────────────────────────────────────── */
@@ -207,7 +204,7 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
       <View style={{ width: 14, height: 2, borderRadius: 2, backgroundColor: color }} />
-      <Text style={{ fontFamily: 'Courier New', fontSize: 10, color: T.text3, letterSpacing: 0.4 }}>{label}</Text>
+      <Text style={{ fontSize: 12, color: T.text3 }}>{label}</Text>
     </View>
   );
 }
@@ -253,9 +250,8 @@ function BigChart({ values, color }: { values: number[]; color: string }) {
           <SvgText
             x={PAD.l - 6} y={py(t) + 3}
             textAnchor="end"
-            fontSize="9"
+            fontSize="10"
             fill={T.text3}
-            fontFamily="Courier New"
           >
             {t.toFixed(0)}
           </SvgText>
@@ -278,9 +274,8 @@ function BigChart({ values, color }: { values: number[]; color: string }) {
       <SvgText
         x={lastX} y={lastY - 12}
         textAnchor="middle"
-        fontSize="10.5"
+        fontSize="11"
         fill={T.accentOn}
-        fontFamily="Courier New"
         fontWeight="600"
       >
         {values[values.length - 1].toFixed(1)}
@@ -293,8 +288,8 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: T.bg },
   content: { paddingBottom: 110 },
   header: { paddingHorizontal: 22, paddingTop: 60, paddingBottom: 14 },
-  kicker: { fontFamily: 'Courier New', fontSize: 11, color: T.text3, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 4 },
-  title: { fontSize: 30, fontWeight: '600', color: T.text, letterSpacing: -0.8 },
+  kicker: { fontSize: 12, fontWeight: '600', color: T.text3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
+  title: { fontSize: 30, fontWeight: '700', color: T.text, letterSpacing: -0.8 },
   selectors: { paddingHorizontal: 22, marginBottom: 14 },
   statRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 18, marginBottom: 14 },
   chartCard: {
@@ -313,9 +308,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 6,
     marginBottom: 8,
   },
-  chartTitle: { fontFamily: 'Courier New', fontSize: 10.5, color: T.text3, letterSpacing: 1.2, textTransform: 'uppercase' },
+  chartTitle: { fontSize: 13, fontWeight: '600', color: T.text2 },
   legend: { flexDirection: 'row', gap: 10 },
   xAxis: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 8 },
-  xLabel: { fontFamily: 'Courier New', fontSize: 10, color: T.text3, letterSpacing: 0.4 },
+  xLabel: { fontSize: 12, color: T.text3 },
   empty: { color: T.text4, textAlign: 'center', marginTop: 60, fontSize: 15, paddingHorizontal: 40 },
 });
