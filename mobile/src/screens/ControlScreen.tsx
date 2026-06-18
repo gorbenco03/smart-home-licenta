@@ -1,27 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Modal, Image, SafeAreaView, ActivityIndicator,
+  Modal, Image, SafeAreaView, ActivityIndicator, Pressable,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useMutation } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { useAppStore } from '../store';
-import { T } from '../theme';
-import { Dot, IosSwitch } from '../components/ui';
+import { T, F, FONT } from '../theme';
+import { GlassCard, Icon, Dot, IosSwitch, SectionHeader } from '../components/ui';
 import { CAMERA_STREAM_URL, CAMERA_SNAPSHOT_URL } from '../services/config';
 
 /* ─── Constante nod ──────────────────────────────── */
 
-const SENSOR_NODE_ID = 'esp32_node_a';   // nodul interior (bucătărie/living/dormitor)
+const SENSOR_NODE_ID = 'esp32_node_a';   // nodul interior
 const CAM_NODE_ID    = 'esp32_cam_node'; // camera din curte
 
 type IonName = keyof typeof Ionicons.glyphMap;
 
-const RELAY_DEFS: Array<{ index: number; label: string; icon: IonName }> = [
-  { index: 0, label: 'Lumină living',   icon: 'bulb' },
-  { index: 1, label: 'Lumină dormitor', icon: 'bulb' },
+const LED_DEFS: Array<{ index: number; label: string; icon: IonName }> = [
+  { index: 0, label: 'LED 1 — Living',   icon: 'bulb' },
+  { index: 1, label: 'LED 2 — Dormitor', icon: 'bulb-outline' },
+  { index: 2, label: 'LED 3 — Hol',      icon: 'flash' },
 ];
 
 type SceneKey = 'acasa' | 'plec' | 'noapte' | 'cinema';
@@ -33,11 +35,10 @@ const SCENES: Array<{ key: SceneKey; label: string; icon: IonName }> = [
   { key: 'cinema', label: 'Cinema', icon: 'film' },
 ];
 
-// Predefiniri servo pentru perdele
 const SERVO_PRESETS: Array<{ label: string; angle: number; icon: IonName }> = [
   { label: 'Deschis', angle: 0,   icon: 'sunny' },
   { label: '50%',     angle: 90,  icon: 'contrast' },
-  { label: 'Închis',  angle: 180, icon: 'moon' },
+  { label: 'Inchis',  angle: 180, icon: 'moon' },
 ];
 
 /* ─── SCREEN ─────────────────────────────────────── */
@@ -49,8 +50,11 @@ export default function ControlScreen() {
 
   return (
     <View style={s.root}>
-      <ScrollView contentContainerStyle={s.content}>
-        {/* Header */}
+      <ScrollView
+        contentContainerStyle={s.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Header ───────────────────────────── */}
         <View style={s.header}>
           <Text style={s.kicker}>Comenzi</Text>
           <Text style={s.title}>Control</Text>
@@ -61,85 +65,160 @@ export default function ControlScreen() {
 
         {/* ── Scene presets ────────────────────── */}
         <View style={s.section}>
-          <Text style={s.sectionLabel}>Scene</Text>
+          <SectionHeader title="Scene" icon="layers" />
           <View style={s.scenesGrid}>
-            {SCENES.map(sc => (
-              <TouchableOpacity
-                key={sc.key}
-                style={[s.sceneCard, activeScene === sc.key && s.sceneCardActive]}
-                onPress={() => setActiveScene(sc.key)}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={sc.icon}
-                  size={20}
-                  color={activeScene === sc.key ? T.accent : T.text2}
-                />
-                <Text style={[s.sceneLabel, activeScene === sc.key && s.sceneLabelActive]}>
-                  {sc.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {SCENES.map(sc => {
+              const active = activeScene === sc.key;
+              return (
+                <TouchableOpacity
+                  key={sc.key}
+                  style={[s.sceneCard, active && s.sceneCardActive]}
+                  onPress={() => setActiveScene(sc.key)}
+                  activeOpacity={0.75}
+                >
+                  <View style={[s.sceneIconBox, active && s.sceneIconBoxActive]}>
+                    <Ionicons
+                      name={sc.icon}
+                      size={18}
+                      color={active ? T.accent : T.text2}
+                    />
+                  </View>
+                  <Text style={[s.sceneLabel, active && s.sceneLabelActive]}>
+                    {sc.label}
+                  </Text>
+                  {active && <View style={s.sceneActiveDot} />}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
         {/* ── Servo — perdele ──────────────────── */}
         <ServoCard nodeId={SENSOR_NODE_ID} online={nodeStatus[SENSOR_NODE_ID] ?? false} />
 
-        {/* ── Lumini ───────────────────────────── */}
-        <RelayCard
+        {/* ── LED-uri ──────────────────────────── */}
+        <LedCard
           nodeId={SENSOR_NODE_ID}
-          label="Lumini"
           online={nodeStatus[SENSOR_NODE_ID] ?? false}
-          defaultRelays={{ 0: false, 1: false }}
+        />
+
+        {/* ── Ventilator ───────────────────────── */}
+        <FanCard
+          nodeId={SENSOR_NODE_ID}
+          online={nodeStatus[SENSOR_NODE_ID] ?? false}
         />
 
         {/* ── Quick actions ─────────────────────── */}
         <View style={s.quickRow}>
-          <QuickActionButton icon="notifications" label="Test alarmă" nodeId={SENSOR_NODE_ID} action="buzzer_beep" />
-          <QuickActionButton icon="power" label="Oprire totală" nodeId={SENSOR_NODE_ID} action="all_off" danger />
+          <QuickActionButton
+            icon="notifications"
+            label="Test alarma"
+            nodeId={SENSOR_NODE_ID}
+            action="buzzer_beep"
+          />
+          <QuickActionButton
+            icon="power"
+            label="Oprire totala"
+            nodeId={SENSOR_NODE_ID}
+            action="all_off"
+            danger
+          />
         </View>
+
+        <View style={s.bottomSpacer} />
       </ScrollView>
 
       {/* ── Full-screen stream modal ──────────── */}
-      <Modal
-        visible={streamOpen}
-        animationType="slide"
-        onRequestClose={() => setStreamOpen(false)}
-      >
-        <SafeAreaView style={sm.root}>
-          <View style={sm.toolbar}>
-            <TouchableOpacity onPress={() => setStreamOpen(false)} style={sm.closeBtn}>
-              <Ionicons name="close" size={16} color={T.accent} />
-              <Text style={sm.closeText}>Închide</Text>
-            </TouchableOpacity>
-            <Text style={sm.toolbarTitle}>Curte — Live</Text>
-          </View>
-          <WebView
-            source={{ uri: CAMERA_STREAM_URL }}
-            style={sm.webview}
-            javaScriptEnabled
-            startInLoadingState
-            renderLoading={() => (
-              <View style={sm.loading}>
-                <ActivityIndicator color={T.accent} size="large" />
-                <Text style={sm.loadingText}>Conectare la cameră…</Text>
-              </View>
-            )}
-          />
-        </SafeAreaView>
-      </Modal>
+      <StreamModal visible={streamOpen} onClose={() => setStreamOpen(false)} />
     </View>
   );
 }
 
+/* ─── STREAM MODAL ───────────────────────────────── */
+function StreamModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={sm.root}>
+        {/* Dark scrim + safe area toolbar */}
+        <SafeAreaView style={sm.safeArea}>
+          <View style={sm.toolbar}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={sm.closeBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              activeOpacity={0.7}
+            >
+              <View style={sm.closeBtnInner}>
+                <Ionicons name="close" size={18} color={T.text} />
+              </View>
+            </TouchableOpacity>
+
+            <View style={sm.titleRow}>
+              <View style={sm.liveDotWrap}>
+                <Dot color={T.danger} size={6} glow />
+              </View>
+              <Text style={sm.toolbarTitle}>Curte — Live</Text>
+            </View>
+
+            {/* Spacer to center title */}
+            <View style={sm.closeBtnSpacer} />
+          </View>
+        </SafeAreaView>
+
+        <WebView
+          source={{ uri: CAMERA_STREAM_URL }}
+          style={sm.webview}
+          javaScriptEnabled
+          startInLoadingState
+          renderLoading={() => (
+            <View style={sm.loading}>
+              <ActivityIndicator color={T.accent} size="large" />
+              <Text style={sm.loadingText}>Conectare la camera...</Text>
+            </View>
+          )}
+        />
+      </View>
+    </Modal>
+  );
+}
+
+const sm = StyleSheet.create({
+  root:    { flex: 1, backgroundColor: '#000' },
+  safeArea: { backgroundColor: 'rgba(7,10,20,0.92)' },
+  toolbar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 18, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: T.glassBorder,
+  },
+  closeBtn: { padding: 2 },
+  closeBtnInner: {
+    width: 36, height: 36, borderRadius: T.r.sm,
+    backgroundColor: T.glass2, borderWidth: 1, borderColor: T.glassBorder,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  closeBtnSpacer: { width: 36 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  liveDotWrap: { marginTop: 1 },
+  toolbarTitle: { ...F.heading, fontSize: 16 },
+  webview: { flex: 1 },
+  loading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center',
+    gap: 14, backgroundColor: '#000',
+  },
+  loadingText: { ...F.body, color: T.text2 },
+});
+
 /* ─── CAMERA CARD ────────────────────────────────── */
 function CameraCard({ onOpenStream }: { onOpenStream: () => void }) {
-  const [snapshotUri, setSnapshotUri] = useState<string | null>(null);
-  const [ts, setTs]   = useState(Date.now());
-  const timerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [ts, setTs] = useState(Date.now());
+  const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Refresh snapshot la fiecare 5 secunde
   useEffect(() => {
     timerRef.current = setInterval(() => setTs(Date.now()), 5000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
@@ -148,19 +227,21 @@ function CameraCard({ onOpenStream }: { onOpenStream: () => void }) {
   const snapshotUrl = `${CAMERA_SNAPSHOT_URL}?t=${ts}`;
 
   return (
-    <View style={cc.card}>
+    <GlassCard style={cc.card} padding={0}>
+      {/* Header */}
       <View style={cc.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={cc.headerLeft}>
           <View style={cc.iconBox}>
-            <Ionicons name="videocam" size={16} color={T.accent} />
+            <Ionicons name="videocam" size={17} color={T.accent} />
           </View>
           <View>
-            <Text style={cc.label}>Curte</Text>
-            <Text style={cc.subLabel}>Supraveghere live</Text>
+            <Text style={cc.cardTitle}>Curte</Text>
+            <Text style={cc.cardSub}>Supraveghere live</Text>
           </View>
         </View>
+        {/* LIVE badge */}
         <View style={cc.livePill}>
-          <View style={cc.liveDot} />
+          <Dot color={T.danger} size={6} glow />
           <Text style={cc.liveText}>LIVE</Text>
         </View>
       </View>
@@ -171,79 +252,80 @@ function CameraCard({ onOpenStream }: { onOpenStream: () => void }) {
           source={{ uri: snapshotUrl }}
           style={cc.preview}
           resizeMode="cover"
-          onError={() => {/* Cameră deconectată — imagine lipsa e OK */}}
+          onError={() => {}}
+        />
+        {/* Vignette overlay */}
+        <LinearGradient
+          colors={['transparent', 'rgba(7,10,20,0.55)']}
+          style={cc.vignette}
+          pointerEvents="none"
         />
       </View>
 
-      <TouchableOpacity style={cc.streamBtn} onPress={onOpenStream} activeOpacity={0.8}>
-        <Ionicons name="play" size={14} color={T.accent} />
-        <Text style={cc.streamBtnText}>Vezi live</Text>
+      {/* CTA — Vezi live */}
+      <TouchableOpacity onPress={onOpenStream} activeOpacity={0.85} style={cc.streamBtnWrap}>
+        <LinearGradient
+          colors={T.grad.accent}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={cc.streamBtn}
+        >
+          <Ionicons name="play-circle" size={18} color="#fff" />
+          <Text style={cc.streamBtnText}>Vezi live</Text>
+        </LinearGradient>
       </TouchableOpacity>
-    </View>
+    </GlassCard>
   );
 }
 
 const cc = StyleSheet.create({
   card: {
-    backgroundColor: T.surface,
-    borderRadius: 22,
-    borderWidth: 1, borderColor: T.border,
-    marginHorizontal: 18, marginBottom: 14,
-    overflow: 'hidden',
-    ...T.shadow,
+    marginHorizontal: T.s.xl, marginBottom: T.s.md,
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: 14, paddingBottom: 12,
+    paddingHorizontal: T.s.xl, paddingTop: T.s.xl, paddingBottom: T.s.md,
   },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   iconBox: {
-    width: 32, height: 32, borderRadius: 10,
-    backgroundColor: T.accentSoft,
+    width: 36, height: 36, borderRadius: T.r.sm,
+    backgroundColor: T.accentSoft, borderWidth: 1, borderColor: T.accentLine,
     alignItems: 'center', justifyContent: 'center',
   },
-  label: { fontSize: 16, fontWeight: '600', color: T.text, letterSpacing: -0.2 },
-  subLabel: { fontSize: 12, color: T.text3, marginTop: 1 },
+  cardTitle: { ...F.heading, fontSize: 16 },
+  cardSub:   { ...F.caption, marginTop: 2 },
   livePill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: T.dangerSoft,
-    borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: T.dangerSoft, borderRadius: T.r.pill,
+    paddingHorizontal: 10, paddingVertical: 5,
     borderWidth: 1, borderColor: T.dangerLine,
   },
-  liveDot: {
-    width: 6, height: 6, borderRadius: 3,
-    backgroundColor: T.danger,
+  liveText: {
+    fontSize: 11, fontFamily: FONT.bold, color: T.dangerHi, letterSpacing: 1,
+    textTransform: 'uppercase',
   },
-  liveText: { fontSize: 12, color: T.dangerHi, fontWeight: '700', letterSpacing: 0.5 },
   previewWrap: {
-    marginHorizontal: 14, marginBottom: 10,
-    height: 160, borderRadius: 14, overflow: 'hidden',
+    marginHorizontal: T.s.xl, marginBottom: T.s.md,
+    height: 168, borderRadius: T.r.md, overflow: 'hidden',
     backgroundColor: T.surface3,
   },
   preview: { width: '100%', height: '100%' },
+  vignette: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: T.r.md,
+  },
+  streamBtnWrap: {
+    marginHorizontal: T.s.xl, marginBottom: T.s.xl,
+    borderRadius: T.r.sm, overflow: 'hidden',
+  },
   streamBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: T.accentSoft,
-    borderTopWidth: 1, borderTopColor: T.accentLine,
-    padding: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 13,
+    ...T.glow,
   },
-  streamBtnIcon: { fontSize: 14, color: T.accent },
-  streamBtnText: { fontSize: 14, fontWeight: '600', color: T.accent, letterSpacing: -0.1 },
-});
-
-/* Stream modal styles */
-const sm = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
-  toolbar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: T.bg, paddingHorizontal: 18, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: T.border,
+  streamBtnText: {
+    fontSize: 15, fontFamily: FONT.semibold, color: '#fff', letterSpacing: -0.1,
   },
-  closeBtn: { padding: 4 },
-  closeText: { fontSize: 14, color: T.accent, fontWeight: '600' },
-  toolbarTitle: { fontSize: 14, fontWeight: '600', color: T.text },
-  webview: { flex: 1 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  loadingText: { color: T.text2, fontSize: 14 },
 });
 
 /* ─── SERVO CARD (Perdele) ───────────────────────── */
@@ -256,182 +338,321 @@ function ServoCard({ nodeId, online }: { nodeId: string; online: boolean }) {
     onSuccess: (_, angle) => setActiveAngle(angle),
   });
 
-  // Override api.commands.send to include servoAngle
   function sendServo(angle: number) {
     fetch(`${require('../services/config').API_BASE}/commands/${nodeId}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // token via store interceptor handles auth
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'servo_move', servoAngle: angle }),
     }).catch(() => {});
     setActiveAngle(angle);
   }
 
   return (
-    <View style={sv.card}>
+    <GlassCard style={sv.card}>
+      {/* Header */}
       <View style={sv.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={sv.headerLeft}>
           <View style={sv.iconBox}>
-            <Ionicons name="reorder-four" size={16} color={T.accent} />
+            <Ionicons name="reorder-four" size={17} color={T.accent} />
           </View>
           <View>
-            <Text style={sv.label}>Perdele</Text>
-            <Text style={sv.subLabel}>Living</Text>
+            <Text style={sv.cardTitle}>Perdele</Text>
+            <Text style={sv.cardSub}>Living</Text>
           </View>
         </View>
-        <Dot color={online ? T.success : T.text4} size={7} />
+        <View style={sv.statusRow}>
+          <Dot color={online ? T.success : T.text4} size={7} glow={online} />
+          <Text style={[sv.statusText, { color: online ? T.success : T.text4 }]}>
+            {online ? 'Online' : 'Offline'}
+          </Text>
+        </View>
       </View>
 
+      {/* Preset buttons */}
       <View style={sv.btnRow}>
-        {SERVO_PRESETS.map(p => (
-          <TouchableOpacity
-            key={p.angle}
-            style={[sv.btn, activeAngle === p.angle && sv.btnActive]}
-            onPress={() => sendServo(p.angle)}
-            activeOpacity={0.7}
-            disabled={!online}
-          >
-            <Ionicons
-              name={p.icon}
-              size={18}
-              color={activeAngle === p.angle ? T.accent : T.text2}
-            />
-            <Text style={[sv.btnLabel, activeAngle === p.angle && sv.btnLabelActive]}>
-              {p.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {SERVO_PRESETS.map(p => {
+          const active = activeAngle === p.angle;
+          return (
+            <TouchableOpacity
+              key={p.angle}
+              style={[sv.btn, active ? sv.btnActive : sv.btnInactive]}
+              onPress={() => sendServo(p.angle)}
+              activeOpacity={0.75}
+              disabled={!online}
+            >
+              <View style={[sv.btnIconWrap, active && sv.btnIconWrapActive]}>
+                <Ionicons
+                  name={p.icon}
+                  size={18}
+                  color={active ? T.accent : T.text2}
+                />
+              </View>
+              <Text style={[sv.btnLabel, active && sv.btnLabelActive]}>
+                {p.label}
+              </Text>
+              {active && <View style={sv.activePip} />}
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {!online && (
-        <Text style={sv.offline}>Nodul este offline</Text>
+        <View style={sv.offlineWrap}>
+          <Ionicons name="cloud-offline-outline" size={14} color={T.text4} />
+          <Text style={sv.offlineText}>Nodul este offline</Text>
+        </View>
       )}
-    </View>
+    </GlassCard>
   );
 }
 
 const sv = StyleSheet.create({
-  card: {
-    backgroundColor: T.surface,
-    borderRadius: 22,
-    borderWidth: 1, borderColor: T.border,
-    marginHorizontal: 18, marginBottom: 14,
-    padding: 14,
-    ...T.shadow,
-  },
+  card: { marginHorizontal: T.s.xl, marginBottom: T.s.md },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: T.s.lg,
   },
+  headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 12 },
   iconBox: {
-    width: 32, height: 32, borderRadius: 10,
-    backgroundColor: T.accentSoft,
+    width: 36, height: 36, borderRadius: T.r.sm,
+    backgroundColor: T.accentSoft, borderWidth: 1, borderColor: T.accentLine,
     alignItems: 'center', justifyContent: 'center',
   },
-  label: { fontSize: 16, fontWeight: '600', color: T.text, letterSpacing: -0.2 },
-  subLabel: { fontSize: 12, color: T.text3, marginTop: 1 },
+  cardTitle: { ...F.heading, fontSize: 16 },
+  cardSub:   { ...F.caption, marginTop: 2 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusText: { fontSize: 12, fontFamily: FONT.medium },
   btnRow: { flexDirection: 'row', gap: 10 },
   btn: {
-    flex: 1, alignItems: 'center', gap: 4,
-    backgroundColor: T.surface2,
-    borderRadius: 14, paddingVertical: 12,
-    borderWidth: 1, borderColor: T.border,
+    flex: 1, alignItems: 'center', gap: 6,
+    borderRadius: T.r.md, paddingVertical: 14, paddingHorizontal: 8,
+    borderWidth: 1,
+    position: 'relative',
   },
-  btnActive: { backgroundColor: T.accentSoft, borderColor: T.accentLine },
-  btnLabel: { fontSize: 13, fontWeight: '600', color: T.text },
-  btnLabelActive: { color: T.accent },
-  offline: { textAlign: 'center', fontSize: 12, color: T.text4, marginTop: 8 },
+  btnInactive: {
+    backgroundColor: T.glass,
+    borderColor: T.glassBorder,
+  },
+  btnActive: {
+    backgroundColor: T.accentSoft,
+    borderColor: T.accentLine,
+    ...T.glow,
+  },
+  btnIconWrap: {
+    width: 34, height: 34, borderRadius: T.r.xs,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: T.glass2,
+  },
+  btnIconWrapActive: {
+    backgroundColor: 'rgba(109,139,255,0.28)',
+  },
+  btnLabel: {
+    fontSize: 12.5, fontFamily: FONT.semibold, color: T.text2,
+  },
+  btnLabelActive: { color: T.accentHi },
+  activePip: {
+    position: 'absolute', bottom: 7,
+    width: 18, height: 3, borderRadius: T.r.pill,
+    backgroundColor: T.accent,
+  },
+  offlineWrap: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, marginTop: 12,
+  },
+  offlineText: { ...F.caption, color: T.text4 },
 });
 
-/* ─── RELAY CARD ─────────────────────────────────── */
-function RelayCard({
-  nodeId, label, online, defaultRelays,
-}: { nodeId: string; label: string; online: boolean; defaultRelays: Record<number, boolean> }) {
-  const [relays, setRelays] = useState<Record<number, boolean>>(defaultRelays);
+/* ─── LED CARD ───────────────────────────────────── */
+function LedCard({ nodeId, online }: { nodeId: string; online: boolean }) {
+  const [leds, setLeds] = useState<Record<number, boolean>>({ 0: false, 1: false, 2: false });
 
   const mutation = useMutation({
-    mutationFn: ({ action, relay }: { action: string; relay: number }) =>
-      api.commands.send(nodeId, action as any, relay),
+    mutationFn: ({ action, led }: { action: string; led: number }) =>
+      api.commands.send(nodeId, action, { led }),
     onSuccess: (_, vars) => {
-      setRelays(prev => ({ ...prev, [vars.relay]: vars.action === 'relay_on' }));
+      setLeds(prev => ({ ...prev, [vars.led]: vars.action === 'led_on' }));
     },
   });
 
-  const activeCount = Object.values(relays).filter(Boolean).length;
+  const activeCount = Object.values(leds).filter(Boolean).length;
 
   return (
-    <View style={rc.card}>
-      <View style={rc.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Dot color={online ? T.success : T.text4} size={7} />
-          <Text style={rc.label}>{label}</Text>
+    <GlassCard style={rc.card} padding={0}>
+      {/* Card header */}
+      <View style={rc.cardHeader}>
+        <View style={rc.headerLeft}>
+          <View style={rc.iconBox}>
+            <Ionicons name="bulb" size={17} color={T.accent} />
+          </View>
+          <View>
+            <Text style={rc.cardTitle}>LED-uri</Text>
+            <Text style={rc.cardSub}>Iluminat interior</Text>
+          </View>
         </View>
-        <Text style={[rc.count, { color: activeCount > 0 ? T.accent : T.text3 }]}>
-          {activeCount}/{RELAY_DEFS.length} active
-        </Text>
+        <View style={[rc.countBadge, activeCount > 0 && rc.countBadgeActive]}>
+          <Text style={[rc.countText, { color: activeCount > 0 ? T.accentHi : T.text3 }]}>
+            {activeCount}/{LED_DEFS.length}
+          </Text>
+          <Text style={[rc.countLabel, { color: activeCount > 0 ? T.text3 : T.text4 }]}>
+            {' '}active
+          </Text>
+        </View>
       </View>
 
-      {RELAY_DEFS.map((relay, i) => (
-        <TouchableOpacity
-          key={relay.index}
-          style={[rc.row, i === RELAY_DEFS.length - 1 && rc.rowLast]}
-          onPress={() => {
-            const on = relays[relay.index];
-            mutation.mutate({ action: on ? 'relay_off' : 'relay_on', relay: relay.index });
-          }}
-          activeOpacity={0.7}
-          disabled={mutation.isPending}
-        >
-          <View style={[rc.iconBox, relays[relay.index] && rc.iconBoxOn]}>
-            <Ionicons
-              name={relay.icon}
-              size={16}
-              color={relays[relay.index] ? T.accent : T.text2}
-            />
+      {/* Divider */}
+      <View style={rc.divider} />
+
+      {LED_DEFS.map((led, i) => {
+        const on = leds[led.index];
+        return (
+          <TouchableOpacity
+            key={led.index}
+            style={[rc.row, i === LED_DEFS.length - 1 && rc.rowLast]}
+            onPress={() =>
+              mutation.mutate({ action: on ? 'led_off' : 'led_on', led: led.index })
+            }
+            activeOpacity={0.7}
+            disabled={!online || mutation.isPending}
+          >
+            <View style={[rc.ledIconBox, on && rc.ledIconBoxOn]}>
+              <Ionicons
+                name={led.icon}
+                size={16}
+                color={on ? T.accent : T.text2}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[rc.ledLabel, on && rc.ledLabelOn]}>{led.label}</Text>
+              <Text style={[rc.ledStatus, { color: on ? T.accentHi : T.text4 }]}>
+                {on ? 'Pornit' : 'Oprit'}
+              </Text>
+            </View>
+            <IosSwitch on={on} />
+          </TouchableOpacity>
+        );
+      })}
+
+      {!online && (
+        <View style={rc.offlineWrap}>
+          <Ionicons name="cloud-offline-outline" size={14} color={T.text4} />
+          <Text style={rc.offlineText}>Nodul este offline</Text>
+        </View>
+      )}
+    </GlassCard>
+  );
+}
+
+/* ─── FAN CARD ───────────────────────────────────── */
+function FanCard({ nodeId, online }: { nodeId: string; online: boolean }) {
+  const [fanOn, setFanOn] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: (action: string) => api.commands.send(nodeId, action),
+    onSuccess: (_, action) => setFanOn(action === 'fan_on'),
+  });
+
+  return (
+    <GlassCard style={rc.card} padding={0}>
+      {/* Card header */}
+      <View style={rc.cardHeader}>
+        <View style={rc.headerLeft}>
+          <View style={[rc.iconBox, { backgroundColor: T.infoSoft, borderColor: 'rgba(56,189,248,0.45)' }]}>
+            <Ionicons name="leaf" size={17} color={T.info} />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={rc.relayLabel}>{relay.label}</Text>
-            <Text style={[rc.relayStatus, { color: relays[relay.index] ? T.accent : T.text3 }]}>
-              {relays[relay.index] ? 'Pornit' : 'Oprit'}
-            </Text>
+          <View>
+            <Text style={rc.cardTitle}>Ventilator</Text>
+            <Text style={rc.cardSub}>Circulatie aer</Text>
           </View>
-          <IosSwitch on={relays[relay.index]} />
-        </TouchableOpacity>
-      ))}
-    </View>
+        </View>
+        <View style={[rc.countBadge, fanOn && rc.countBadgeFan]}>
+          <Text style={[rc.countText, { color: fanOn ? T.info : T.text3 }]}>
+            {fanOn ? '1/1' : '0/1'}
+          </Text>
+          <Text style={[rc.countLabel, { color: fanOn ? T.text3 : T.text4 }]}>
+            {' '}activ
+          </Text>
+        </View>
+      </View>
+
+      <View style={rc.divider} />
+
+      <TouchableOpacity
+        style={[rc.row, rc.rowLast]}
+        onPress={() => mutation.mutate(fanOn ? 'fan_off' : 'fan_on')}
+        activeOpacity={0.7}
+        disabled={!online || mutation.isPending}
+      >
+        <View style={[rc.ledIconBox, fanOn && rc.ledIconBoxFan]}>
+          <Ionicons name="leaf" size={16} color={fanOn ? T.info : T.text2} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[rc.ledLabel, fanOn && rc.ledLabelFan]}>Ventilator 5V</Text>
+          <Text style={[rc.ledStatus, { color: fanOn ? T.info : T.text4 }]}>
+            {fanOn ? 'Pornit' : 'Oprit'}
+          </Text>
+        </View>
+        <IosSwitch on={fanOn} color={T.info} />
+      </TouchableOpacity>
+
+      {!online && (
+        <View style={rc.offlineWrap}>
+          <Ionicons name="cloud-offline-outline" size={14} color={T.text4} />
+          <Text style={rc.offlineText}>Nodul este offline</Text>
+        </View>
+      )}
+    </GlassCard>
   );
 }
 
 const rc = StyleSheet.create({
   card: {
-    backgroundColor: T.surface,
-    borderRadius: 22,
-    borderWidth: 1, borderColor: T.border,
-    padding: 14,
-    marginHorizontal: 18, marginBottom: 14,
-    ...T.shadow,
+    marginHorizontal: T.s.xl, marginBottom: T.s.md,
   },
-  header: {
+  cardHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: T.border, marginBottom: 4,
+    paddingHorizontal: T.s.xl, paddingVertical: T.s.lg,
   },
-  label: { fontSize: 16, fontWeight: '600', color: T.text, letterSpacing: -0.2 },
-  count: { fontSize: 12, fontWeight: '500' },
-  row: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: T.border,
-  },
-  rowLast: { borderBottomWidth: 0 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   iconBox: {
-    width: 34, height: 34, borderRadius: 10,
-    backgroundColor: T.surface2, borderWidth: 1, borderColor: T.border,
+    width: 36, height: 36, borderRadius: T.r.sm,
+    backgroundColor: T.accentSoft, borderWidth: 1, borderColor: T.accentLine,
     alignItems: 'center', justifyContent: 'center',
   },
-  iconBoxOn: { backgroundColor: T.accentSoft, borderColor: T.accentLine },
-  relayLabel: { fontSize: 15, fontWeight: '500', color: T.text },
-  relayStatus: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  cardTitle: { ...F.heading, fontSize: 16 },
+  cardSub:   { ...F.caption, marginTop: 2 },
+  countBadge: {
+    flexDirection: 'row', alignItems: 'baseline',
+    backgroundColor: T.glass, borderRadius: T.r.sm,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: T.glassBorder,
+  },
+  countBadgeActive: { backgroundColor: T.accentSoft, borderColor: T.accentLine },
+  countBadgeFan:    { backgroundColor: T.infoSoft,   borderColor: 'rgba(56,189,248,0.45)' },
+  countText:  { fontFamily: FONT.num, fontSize: 14 },
+  countLabel: { fontFamily: FONT.medium, fontSize: 12 },
+  divider: { height: 1, backgroundColor: T.glassBorder, marginHorizontal: T.s.xl },
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingHorizontal: T.s.xl, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: T.glassBorder,
+  },
+  rowLast: { borderBottomWidth: 0 },
+  ledIconBox: {
+    width: 36, height: 36, borderRadius: T.r.sm,
+    backgroundColor: T.glass2, borderWidth: 1, borderColor: T.glassBorder,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  ledIconBoxOn:  { backgroundColor: T.accentSoft, borderColor: T.accentLine },
+  ledIconBoxFan: { backgroundColor: T.infoSoft,   borderColor: 'rgba(56,189,248,0.45)' },
+  ledLabel:    { ...F.body, color: T.text },
+  ledLabelOn:  { color: T.text, fontFamily: FONT.semibold },
+  ledLabelFan: { color: T.text, fontFamily: FONT.semibold },
+  ledStatus: { fontSize: 12, fontFamily: FONT.medium, marginTop: 2 },
+  offlineWrap: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 10, paddingHorizontal: T.s.xl,
+  },
+  offlineText: { ...F.caption, color: T.text4 },
 });
 
 /* ─── QUICK ACTION BUTTON ────────────────────────── */
@@ -442,18 +663,39 @@ function QuickActionButton({
     mutationFn: () => api.commands.send(nodeId, action as any),
   });
 
+  if (danger) {
+    return (
+      <TouchableOpacity
+        style={[qa.btn, qa.btnDanger]}
+        onPress={() => mutation.mutate()}
+        disabled={mutation.isPending}
+        activeOpacity={0.75}
+      >
+        <View style={qa.dangerIconBox}>
+          <Ionicons name={icon} size={17} color={T.dangerHi} />
+        </View>
+        <Text style={qa.labelDanger}>{label}</Text>
+        {mutation.isPending && (
+          <ActivityIndicator size="small" color={T.dangerHi} style={{ marginLeft: 'auto' }} />
+        )}
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <TouchableOpacity
-      style={[
-        qa.btn,
-        danger ? { backgroundColor: T.dangerSoft, borderColor: T.dangerLine } : null,
-      ]}
+      style={qa.btn}
       onPress={() => mutation.mutate()}
       disabled={mutation.isPending}
-      activeOpacity={0.7}
+      activeOpacity={0.75}
     >
-      <Ionicons name={icon} size={17} color={danger ? T.dangerHi : T.text2} />
-      <Text style={[qa.label, danger && { color: T.dangerHi }]}>{label}</Text>
+      <View style={qa.iconBox}>
+        <Ionicons name={icon} size={17} color={T.text2} />
+      </View>
+      <Text style={qa.label}>{label}</Text>
+      {mutation.isPending && (
+        <ActivityIndicator size="small" color={T.accent} style={{ marginLeft: 'auto' }} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -461,29 +703,77 @@ function QuickActionButton({
 const qa = StyleSheet.create({
   btn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: T.surface, borderWidth: 1, borderColor: T.border,
-    borderRadius: 16, padding: 14, ...T.shadow,
+    backgroundColor: T.glass, borderWidth: 1, borderColor: T.glassBorder,
+    borderRadius: T.r.md, paddingVertical: 14, paddingHorizontal: 14,
+    ...T.shadow,
   },
-  label: { fontSize: 14, fontWeight: '600', color: T.text, letterSpacing: -0.1 },
+  btnDanger: {
+    backgroundColor: T.dangerSoft,
+    borderColor: T.dangerLine,
+  },
+  iconBox: {
+    width: 32, height: 32, borderRadius: T.r.xs,
+    backgroundColor: T.glass2, borderWidth: 1, borderColor: T.glassBorder,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  dangerIconBox: {
+    width: 32, height: 32, borderRadius: T.r.xs,
+    backgroundColor: 'rgba(251,94,114,0.22)', borderWidth: 1, borderColor: T.dangerLine,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  label:       { ...F.label, color: T.text, flex: 1 },
+  labelDanger: { ...F.label, color: T.dangerHi, flex: 1 },
 });
 
+/* ─── SCREEN STYLES ──────────────────────────────── */
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: T.bg },
-  content: { paddingBottom: 110 },
-  header: { paddingHorizontal: 22, paddingTop: 60, paddingBottom: 14 },
-  kicker: { fontSize: 12, fontWeight: '600', color: T.text3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  title: { fontSize: 30, fontWeight: '700', color: T.text, letterSpacing: -0.8 },
-  section: { paddingHorizontal: 18, marginBottom: 14 },
-  sectionLabel: { fontSize: 12, fontWeight: '600', color: T.text3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  content: { paddingBottom: 24 },
+  bottomSpacer: { height: 86 },
+
+  /* Header */
+  header: {
+    paddingHorizontal: T.s.xl, paddingTop: 60, paddingBottom: T.s.lg,
+  },
+  kicker: { ...F.kicker, marginBottom: 6 },
+  title:  { ...F.display },
+
+  /* Section wrapper */
+  section: { paddingHorizontal: T.s.xl, marginBottom: T.s.md },
+
+  /* Scenes grid */
   scenesGrid: { flexDirection: 'row', gap: 8 },
   sceneCard: {
     flex: 1, alignItems: 'center', gap: 6,
-    paddingVertical: 14, paddingHorizontal: 6,
-    backgroundColor: T.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: T.border, ...T.shadow,
+    paddingVertical: 14, paddingHorizontal: 4,
+    backgroundColor: T.glass, borderRadius: T.r.md,
+    borderWidth: 1, borderColor: T.glassBorder,
+    position: 'relative',
   },
-  sceneCardActive: { backgroundColor: T.accentSoft, borderColor: T.accentLine },
-  sceneLabel: { fontSize: 12, fontWeight: '600', color: T.text, letterSpacing: -0.1 },
-  sceneLabelActive: { color: T.accent },
-  quickRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 18, marginTop: 2 },
+  sceneCardActive: {
+    backgroundColor: T.accentSoft, borderColor: T.accentLine,
+    ...T.glow,
+  },
+  sceneIconBox: {
+    width: 34, height: 34, borderRadius: T.r.xs,
+    backgroundColor: T.glass2, borderWidth: 1, borderColor: T.glassBorder,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sceneIconBoxActive: {
+    backgroundColor: 'rgba(109,139,255,0.28)',
+    borderColor: T.accentLine,
+  },
+  sceneLabel:       { ...F.caption, color: T.text2 },
+  sceneLabelActive: { color: T.accentHi, fontFamily: FONT.semibold },
+  sceneActiveDot: {
+    position: 'absolute', bottom: 6,
+    width: 16, height: 3, borderRadius: T.r.pill,
+    backgroundColor: T.accent,
+  },
+
+  /* Quick actions row */
+  quickRow: {
+    flexDirection: 'row', gap: 10,
+    paddingHorizontal: T.s.xl, marginTop: 4,
+  },
 });

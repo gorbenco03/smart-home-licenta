@@ -9,6 +9,12 @@ export interface SensorReading {
   gasAlert: boolean;
   motion: boolean;
   lightLux: number;
+  // Al 2-lea DHT11 (altă cameră)
+  temperature2?: number;
+  humidity2?: number;
+  // Cele 2 senzori LDR (0–1023)
+  light1?: number;
+  light2?: number;
 }
 
 export interface AlertItem {

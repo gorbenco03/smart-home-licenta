@@ -1,20 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
-  Platform, ScrollView,
+  Platform, ScrollView, Animated,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../services/api';
 import { useAppStore } from '../store';
 import { connectSocket } from '../services/socket';
-import { T } from '../theme';
+import { T, F, FONT } from '../theme';
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('admin123');
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
+  const [showPass, setShowPass] = useState(false);
   const setAuth = useAppStore((s) => s.setAuth);
 
   async function handleLogin() {
@@ -37,98 +40,204 @@ export default function LoginScreen() {
       style={s.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Ambient glow top */}
-      <View style={s.glowTop} pointerEvents="none" />
-      {/* Ambient glow bottom */}
-      <View style={s.glowBottom} pointerEvents="none" />
+      {/* Glow decorativ accent — stânga sus */}
+      <View style={s.glowAccent} pointerEvents="none" />
+      {/* Glow decorativ cyan — dreapta jos */}
+      <View style={s.glowCyan} pointerEvents="none" />
+      {/* Glow violet — centru */}
+      <View style={s.glowViolet} pointerEvents="none" />
 
       <ScrollView
         contentContainerStyle={s.scroll}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {/* Brand mark */}
+        {/* Brand mark — logo cu gradient */}
         <View style={s.brand}>
-          <View style={s.logoBox}>
-            <Ionicons name="home" size={18} color={T.accentOn} />
+          <LinearGradient
+            colors={T.grad.accent}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.logoGrad}
+          >
+            <Ionicons name="home" size={22} color="#fff" />
+          </LinearGradient>
+          <View style={s.brandText}>
+            <Text style={s.brandName}>SmartHome</Text>
+            <Text style={s.brandTagline}>Sistem local</Text>
           </View>
         </View>
 
         {/* Title block */}
         <View style={s.titleBlock}>
-          <Text style={s.title}>Smart Home</Text>
-          <Text style={s.subtitle}>Bun venit acasă</Text>
+          <Text style={s.title}>Bun venit</Text>
+          <Text style={s.subtitle}>
+            Autentifică-te pentru a controla{'\n'}sistemul casei tale
+          </Text>
         </View>
 
-        {/* Inputs */}
-        <View style={s.inputs}>
-          <FieldInput label="Utilizator" value={username} onChangeText={setUsername} />
-          <FieldInput label="Parolă" value={password} onChangeText={setPassword} secureTextEntry />
+        {/* Card glass cu câmpuri */}
+        <View style={s.cardWrap}>
+          <BlurView
+            intensity={28}
+            tint="dark"
+            experimentalBlurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: T.glass }]} />
+
+          <View style={s.cardInner}>
+            <FieldInput
+              label="Utilizator"
+              value={username}
+              onChangeText={setUsername}
+              icon="person-outline"
+              autoCapitalize="none"
+              returnKeyType="next"
+              textContentType="username"
+            />
+            <FieldInput
+              label="Parolă"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPass}
+              icon="lock-closed-outline"
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+              textContentType="password"
+              trailingNode={
+                <TouchableOpacity
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  onPress={() => setShowPass((v) => !v)}
+                  accessibilityLabel={showPass ? 'Ascunde parola' : 'Arată parola'}
+                >
+                  <Ionicons
+                    name={showPass ? 'eye-off-outline' : 'eye-outline'}
+                    size={18}
+                    color={T.text3}
+                  />
+                </TouchableOpacity>
+              }
+            />
+
+            {error ? (
+              <View style={s.errorWrap}>
+                <Ionicons name="alert-circle-outline" size={15} color={T.danger} />
+                <Text style={s.errorText}>{error}</Text>
+              </View>
+            ) : null}
+
+            {/* Buton principal cu gradient + glow */}
+            <TouchableOpacity
+              onPress={handleLogin}
+              disabled={loading}
+              activeOpacity={0.88}
+              style={[s.btnOuter, loading && { opacity: 0.7 }]}
+            >
+              <LinearGradient
+                colors={T.grad.accent}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={s.btnGrad}
+              >
+                {loading
+                  ? <ActivityIndicator color="#fff" />
+                  : (
+                    <View style={s.btnRow}>
+                      <Text style={s.btnText}>Conectare</Text>
+                      <Ionicons name="arrow-forward" size={18} color="#fff" />
+                    </View>
+                  )
+                }
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {error ? <Text style={s.errorText}>{error}</Text> : null}
-
-        {/* CTA */}
-        <TouchableOpacity
-          style={[s.btn, loading && { opacity: 0.7 }]}
-          onPress={handleLogin}
-          disabled={loading}
-          activeOpacity={0.85}
-        >
-          {loading
-            ? <ActivityIndicator color={T.accentOn} />
-            : <Text style={s.btnText}>Conectare</Text>
-          }
-        </TouchableOpacity>
+        {/* Footer info */}
+        <View style={s.footer}>
+          <Ionicons name="wifi-outline" size={13} color={T.text4} />
+          <Text style={s.footerText}>
+            Asigură-te că ești pe aceeași rețea WiFi cu sistemul
+          </Text>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
+/* ─── Field Input ─────────────────────────────────────────── */
+
 function FieldInput({
-  label, value, onChangeText, secureTextEntry,
+  label, value, onChangeText, secureTextEntry, icon, trailingNode,
+  autoCapitalize, returnKeyType, onSubmitEditing, textContentType,
 }: {
   label: string;
   value: string;
   onChangeText: (v: string) => void;
   secureTextEntry?: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  trailingNode?: React.ReactNode;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  returnKeyType?: 'done' | 'next' | 'go' | 'search' | 'send';
+  onSubmitEditing?: () => void;
+  textContentType?: 'username' | 'password' | 'emailAddress';
 }) {
+  const [focused, setFocused] = useState(false);
+
   return (
     <View style={fi.wrap}>
       <Text style={fi.label}>{label}</Text>
-      <TextInput
-        style={fi.input}
-        value={value}
-        onChangeText={onChangeText}
-        secureTextEntry={secureTextEntry}
-        autoCapitalize="none"
-        placeholderTextColor={T.text4}
-      />
+      <View style={[
+        fi.inputRow,
+        { borderColor: focused ? T.accentLine : T.glassBorder },
+      ]}>
+        <Ionicons name={icon} size={17} color={focused ? T.accent : T.text3} style={fi.icon} />
+        <TextInput
+          style={fi.input}
+          value={value}
+          onChangeText={onChangeText}
+          secureTextEntry={secureTextEntry}
+          autoCapitalize={autoCapitalize ?? 'none'}
+          placeholderTextColor={T.text3}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          returnKeyType={returnKeyType}
+          onSubmitEditing={onSubmitEditing}
+          textContentType={textContentType}
+          autoCorrect={false}
+        />
+        {trailingNode}
+      </View>
     </View>
   );
 }
 
 const fi = StyleSheet.create({
-  wrap: {
-    backgroundColor: T.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: T.border,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 13,
-    marginBottom: 14,
-  },
+  wrap: { marginBottom: 16 },
   label: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: T.text3,
-    marginBottom: 5,
+    ...F.label,
+    color: T.text2,
+    marginBottom: 8,
   },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: T.glass2,
+    borderRadius: T.r.md,
+    borderWidth: 1,
+    paddingHorizontal: T.s.lg,
+    minHeight: 52,
+    gap: T.s.sm,
+  },
+  icon: { flexShrink: 0 },
   input: {
-    fontSize: 17,
+    flex: 1,
+    fontSize: 16,
+    fontFamily: FONT.regular,
     color: T.text,
     letterSpacing: -0.2,
-    padding: 0,
+    paddingVertical: 0,
   },
 });
 
@@ -137,82 +246,147 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: T.bg,
   },
-  glowTop: {
+
+  /* Glow-uri decorative */
+  glowAccent: {
     position: 'absolute',
-    top: -120, left: -80,
-    width: 400, height: 400,
-    borderRadius: 200,
-    backgroundColor: 'rgba(251,146,60,0.10)',
+    top: -100, left: -60,
+    width: 340, height: 340,
+    borderRadius: 170,
+    backgroundColor: 'rgba(109,139,255,0.13)',
   },
-  glowBottom: {
+  glowCyan: {
     position: 'absolute',
-    bottom: -140, right: -80,
-    width: 360, height: 360,
-    borderRadius: 180,
-    backgroundColor: 'rgba(135,168,195,0.07)',
+    bottom: -120, right: -80,
+    width: 300, height: 300,
+    borderRadius: 150,
+    backgroundColor: 'rgba(34,211,238,0.09)',
   },
+  glowViolet: {
+    position: 'absolute',
+    top: '38%', left: '25%',
+    width: 250, height: 250,
+    borderRadius: 125,
+    backgroundColor: 'rgba(124,92,255,0.07)',
+  },
+
   scroll: {
     flexGrow: 1,
-    paddingHorizontal: 28,
-    paddingTop: 80,
-    paddingBottom: 40,
+    paddingHorizontal: 24,
+    paddingTop: 72,
+    paddingBottom: 48,
   },
+
+  /* Brand */
   brand: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: T.s.md,
+    marginBottom: 2,
   },
-  logoBox: {
-    width: 40, height: 40,
-    borderRadius: 12,
-    backgroundColor: T.accent,
+  logoGrad: {
+    width: 48, height: 48,
+    borderRadius: T.r.md,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: T.accent,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 8,
+    ...T.glow,
   },
-  titleBlock: { marginTop: 64, marginBottom: 44 },
-  title: {
-    fontSize: 38,
-    fontWeight: '700',
-    letterSpacing: -1.2,
+  brandText: { gap: 2 },
+  brandName: {
+    ...F.heading,
     color: T.text,
-    lineHeight: 44,
+    letterSpacing: -0.4,
+  },
+  brandTagline: {
+    ...F.caption,
+    color: T.text3,
+  },
+
+  /* Title */
+  titleBlock: {
+    marginTop: 52,
+    marginBottom: 36,
+  },
+  title: {
+    ...F.display,
+    letterSpacing: -1,
+    lineHeight: 40,
   },
   subtitle: {
-    fontSize: 16,
-    color: T.text2,
-    marginTop: 8,
+    ...F.body,
+    color: T.text3,
+    marginTop: 10,
+    lineHeight: 22,
   },
-  inputs: { marginBottom: 6 },
+
+  /* Card */
+  cardWrap: {
+    borderRadius: T.r.lg,
+    borderWidth: 1,
+    borderColor: T.glassBorder,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(18,26,46,0.55)',
+    ...T.shadow,
+  },
+  cardInner: {
+    padding: T.s.xl,
+  },
+
+  /* Error */
+  errorWrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: T.s.sm,
+    backgroundColor: T.dangerSoft,
+    borderRadius: T.r.sm,
+    borderWidth: 1,
+    borderColor: T.dangerLine,
+    padding: T.s.md,
+    marginBottom: T.s.lg,
+  },
   errorText: {
-    color: T.danger,
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 12,
-    marginTop: -2,
-    lineHeight: 20,
+    ...F.label,
+    color: T.dangerHi,
+    flex: 1,
+    lineHeight: 19,
   },
-  btn: {
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: T.accent,
+
+  /* Buton */
+  btnOuter: {
+    borderRadius: T.r.md,
+    overflow: 'hidden',
+    ...T.glow,
+    marginTop: T.s.sm,
+  },
+  btnGrad: {
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
-    marginBottom: 32,
-    shadowColor: T.accent,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.45,
-    shadowRadius: 20,
-    elevation: 8,
+  },
+  btnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: T.s.sm,
   },
   btnText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: T.accentOn,
+    fontSize: 16,
+    fontFamily: FONT.semibold,
+    color: '#fff',
     letterSpacing: -0.2,
+  },
+
+  /* Footer */
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 28,
+    justifyContent: 'center',
+  },
+  footerText: {
+    ...F.caption,
+    color: T.text4,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

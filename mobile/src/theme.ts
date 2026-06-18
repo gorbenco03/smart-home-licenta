@@ -1,80 +1,127 @@
-// Design tokens — warm dark stone + amber accent
-// Translated from tokens.css (Claude Design handoff)
+// Design tokens — VIBRANT GLASSMORPHISM (dark)
+// Fundal navy profund, suprafețe „glass" translucide, accente vii
+// (indigo → cyan), text conform WCAG AA. Fonturi: Space Grotesk
+// (titluri/cifre) + Inter (corp).
 
 import { TextStyle } from 'react-native';
 
 export const T = {
-  // Surfaces
-  bg:         '#0c0a09',
-  bgElev:     '#110f0d',
-  surface:    '#1c1917',
-  surface2:   '#232020',
-  surface3:   '#2c2826',
-  surfaceHi:  '#3a3633',
+  // ── Surfaces (navy profund) ──────────────────────────────
+  bg:         '#070A14',
+  bgElev:     '#0B1020',
+  surface:    '#121A2E',   // fallback opac pentru glass
+  surface2:   '#172139',
+  surface3:   '#1E2A47',
+  surfaceHi:  '#26345A',
 
-  // Borders
-  border:       'rgba(255, 246, 230, 0.06)',
-  borderStrong: 'rgba(255, 246, 230, 0.10)',
-  borderWarm:   'rgba(251, 146, 60, 0.22)',
+  // ── Glass (translucid peste fundal/gradient) ─────────────
+  glass:        'rgba(255,255,255,0.055)',
+  glass2:       'rgba(255,255,255,0.09)',
+  glassStrong:  'rgba(255,255,255,0.13)',
+  glassBorder:  'rgba(255,255,255,0.12)',
+  glassBorderHi:'rgba(255,255,255,0.20)',
 
-  // Text — warm whites
-  text:  '#f5f4f1',
-  text2: '#b7b0a8',
-  text3: '#807872',
-  text4: '#57534e',
+  // ── Borders ──────────────────────────────────────────────
+  border:       'rgba(255,255,255,0.10)',
+  borderStrong: 'rgba(255,255,255,0.16)',
+  borderWarm:   'rgba(109,124,255,0.30)',
 
-  // Accent — warm amber
-  accent:     '#fb923c',
-  accentHi:   '#fdba74',
-  accentSoft: 'rgba(251, 146, 60, 0.14)',
-  accentLine: 'rgba(251, 146, 60, 0.45)',
-  accentOn:   '#1a0f06',
+  // ── Text — reci, contrast AA pe navy ─────────────────────
+  text:  '#F4F7FF',
+  text2: '#C4CCE2',   // ~9:1
+  text3: '#97A1BE',   // ~5:1
+  text4: '#717D9C',   // decorativ / large only (~3.2:1)
 
-  // Semantic
-  success:     '#7da76b',
-  successSoft: 'rgba(125, 167, 107, 0.16)',
-  successLine: 'rgba(125, 167, 107, 0.40)',
+  // ── Accent — indigo vibrant + cyan secundar ──────────────
+  accent:     '#6D8BFF',
+  accentHi:   '#9AB0FF',
+  accentSoft: 'rgba(109,139,255,0.18)',
+  accentLine: 'rgba(109,139,255,0.55)',
+  accentOn:   '#06101F',
 
-  warning:     '#e0a449',
-  warningSoft: 'rgba(224, 164, 73, 0.16)',
+  cyan:       '#22D3EE',
+  cyanSoft:   'rgba(34,211,238,0.16)',
+  indigo:     '#7C5CFF',
+  violet:     '#A855F7',
+  violetSoft: 'rgba(168,85,247,0.18)',
 
-  danger:     '#db6a5e',
-  dangerHi:   '#e98c80',
-  dangerSoft: 'rgba(219, 106, 94, 0.16)',
-  dangerLine: 'rgba(219, 106, 94, 0.45)',
+  // ── Semantic (vibrant) ───────────────────────────────────
+  success:     '#34D399',
+  successSoft: 'rgba(52,211,153,0.16)',
+  successLine: 'rgba(52,211,153,0.45)',
 
-  info:     '#87a8c3',
-  infoSoft: 'rgba(135, 168, 195, 0.16)',
+  warning:     '#FBBF24',
+  warningSoft: 'rgba(251,191,36,0.16)',
 
-  violet:     '#a896c5',
-  violetSoft: 'rgba(168, 150, 197, 0.16)',
+  danger:     '#FB5E72',
+  dangerHi:   '#FF8A98',
+  dangerSoft: 'rgba(251,94,114,0.16)',
+  dangerLine: 'rgba(251,94,114,0.50)',
 
-  // Radii shortcuts
-  r: { xs: 8, sm: 12, md: 18, lg: 24, xl: 32 },
+  info:     '#38BDF8',
+  infoSoft: 'rgba(56,189,248,0.16)',
 
-  // Card shadow (iOS)
+  // ── Gradients (pentru LinearGradient: colors={T.grad.x}) ──
+  grad: {
+    accent:  ['#6D8BFF', '#22D3EE'] as const,
+    violet:  ['#7C5CFF', '#A855F7'] as const,
+    success: ['#22D3EE', '#34D399'] as const,
+    danger:  ['#FB5E72', '#F0883E'] as const,
+    bg:      ['#0B1224', '#070A14'] as const,
+  },
+
+  // ── Radii ────────────────────────────────────────────────
+  r: { xs: 10, sm: 14, md: 18, lg: 24, xl: 30, pill: 999 },
+
+  // ── Spacing (ritm 4/8) ───────────────────────────────────
+  s: { xs: 4, sm: 8, md: 12, lg: 16, xl: 22, xxl: 30 },
+
+  // ── Umbră card ───────────────────────────────────────────
   shadow: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.28,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 22,
+    elevation: 10,
+  } as const,
+
+  // ── Glow de accent (sub butoane/elemente active) ─────────
+  glow: {
+    shadowColor: '#6D8BFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
     shadowRadius: 16,
     elevation: 8,
   } as const,
 };
 
-// ── Scară tipografică — system font, nimic sub 12px ──────
-// Valorile numerice de senzori folosesc tabular-nums pentru
-// cifre aliniate, fără font monospace.
+// ── Familii de fonturi (încărcate în App.tsx) ───────────────
+export const FONT = {
+  regular:  'Inter_400Regular',
+  medium:   'Inter_500Medium',
+  semibold: 'Inter_600SemiBold',
+  bold:     'Inter_700Bold',
+  display:  'SpaceGrotesk_700Bold',
+  displaySemi: 'SpaceGrotesk_600SemiBold',
+  num:      'SpaceGrotesk_600SemiBold',
+  numBold:  'SpaceGrotesk_700Bold',
+};
+
+// ── Scară tipografică ───────────────────────────────────────
+// La fonturi custom folosim fontFamily pentru greutate (NU
+// fontWeight, ca să nu derapeze pe Android). Cifrele de senzori
+// folosesc Space Grotesk + tabular-nums pentru aliniere.
 export const F: Record<string, TextStyle> = {
-  display: { fontSize: 34, fontWeight: '700', letterSpacing: -1,   color: T.text },
-  title:   { fontSize: 28, fontWeight: '700', letterSpacing: -0.7, color: T.text },
-  heading: { fontSize: 17, fontWeight: '600', letterSpacing: -0.3, color: T.text },
-  body:    { fontSize: 15, fontWeight: '400', color: T.text2 },
-  label:   { fontSize: 13, fontWeight: '500', color: T.text2 },
-  caption: { fontSize: 12, fontWeight: '500', color: T.text3 },
+  display: { fontSize: 34, fontFamily: FONT.display,     letterSpacing: -0.8, color: T.text },
+  title:   { fontSize: 26, fontFamily: FONT.display,     letterSpacing: -0.6, color: T.text },
+  heading: { fontSize: 18, fontFamily: FONT.displaySemi, letterSpacing: -0.2, color: T.text },
+  body:    { fontSize: 15, fontFamily: FONT.regular,     color: T.text2 },
+  label:   { fontSize: 13.5, fontFamily: FONT.medium,    color: T.text2 },
+  caption: { fontSize: 12.5, fontFamily: FONT.medium,    color: T.text3 },
   kicker:  {
-    fontSize: 12, fontWeight: '600', color: T.text3,
-    letterSpacing: 1, textTransform: 'uppercase',
+    fontSize: 12, fontFamily: FONT.semibold, color: T.text3,
+    letterSpacing: 1.2, textTransform: 'uppercase',
   },
-  num: { fontVariant: ['tabular-nums'], fontWeight: '600', color: T.text },
+  num:     { fontFamily: FONT.num,     fontVariant: ['tabular-nums'], color: T.text },
+  numBold: { fontFamily: FONT.numBold, fontVariant: ['tabular-nums'], color: T.text },
 };

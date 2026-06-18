@@ -63,8 +63,8 @@ export const api = {
   },
 
   commands: {
-    send: (nodeId: string, action: string, relay?: number) =>
-      client.post(`/commands/${nodeId}`, { action, relay }).then((r) => r.data),
+    send: (nodeId: string, action: string, extras?: Record<string, unknown>) =>
+      client.post(`/commands/${nodeId}`, { action, ...extras }).then((r) => r.data),
   },
 
   rules: {

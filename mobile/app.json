@@ -25,7 +25,10 @@
       "bundleIdentifier": "com.gorbenco.smarthome",
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Aplicația se conectează la gateway-ul Smart Home din rețeaua locală.",
-        "NSBonjourServices": ["_http._tcp", "_mqtt._tcp"],
+        "NSBonjourServices": [
+          "_http._tcp",
+          "_mqtt._tcp"
+        ],
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true,
           "NSExceptionDomains": {
@@ -60,7 +63,8 @@
             "deploymentTarget": "15.1"
           }
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {
