@@ -1,0 +1,290 @@
+% cap2_studii.tex
+\chapter{Studii anterioare}
+\label{ch:studii}
+
+Prezentul capitol trece în revistă stadiul actual al domeniilor relevante pentru această
+lucrare: platformele de automatizare rezidențială, protocoalele de comunicație \gls{iot},
+paradigmele de calcul la margine (edge/fog) și metodele de detecție a anomaliilor comportamentale.
+Pe baza acestei analize, sunt identificate lacunele din literatura de specialitate pe care
+sistemul propus urmărește să le acopere.
+
+% ======================================================================
+\section{Platforme smart home comerciale și open-source}
+\label{sec:studii-platforme}
+% ======================================================================
+
+Piața automatizărilor rezidențiale a cunoscut o expansiune rapidă în ultimul deceniu, atât
+în segmentul comercial cât și în cel open-source. Stojkoska și Trivodaliev \cite{stojkoska2017smarthome}
+oferă o trecere în revistă cuprinzătoare a provocărilor și soluțiilor din domeniu, evidențiind
+că interoperabilitatea, securitatea și confidențialitatea datelor rămân problemele centrale
+nerezolvate pe deplin de nicio platformă.
+
+\subsection{Platforme comerciale}
+
+Printre soluțiile comerciale cu cea mai largă adopție se numără Amazon Alexa/Echo,
+Google Home și Apple HomeKit. Toate trei se bazează pe arhitecturi hibride cloud–dispozitiv:
+comenzile utilizatorului sunt transmise serverelor producătorului, procesate în cloud și
+returnate dispozitivului. Această abordare oferă avantaje clare — actualizări automate,
+recunoaștere vocală de înaltă calitate, ecosisteme bogate de aplicații — dar implică o
+serie de dezavantaje fundamentale. Alam et al.\ \cite{alam2012smarthome} subliniază că
+dependența de conectivitate la internet face ca astfel de sisteme să devină nefuncționale
+în absența conexiunii sau la întreruperea serviciului cloud al producătorului.
+
+Aspectul confidențialității este tratat în detaliu de Zheng et al.\ \cite{zheng2018smarthomeprivacy},
+care arată că datele colectate de dispozitivele smart home comerciale — inclusiv obiceiuri
+zilnice, prezența la domiciliu sau conversații ambientale — sunt transferate și stocate pe
+servere terțe, deseori în jurisdicții cu standarde de protecție a datelor diferite. O
+analiză de securitate sistematică realizată de Alrawi et al.\ \cite{alrawi2019sokhome} pe
+un eșantion larg de dispozitive IoT de consum a identificat vulnerabilități la nivelul
+firmware-ului, al protocoalelor de comunicație și al \gls{api}-urilor cloud, concluzionând
+că nivelul de securitate al ecosistemelor comerciale rămâne nesatisfăcător în raport cu
+amenințările actuale.
+
+\subsection{Platforme open-source}
+
+La polul opus se situează platformele open-source, dintre care Home Assistant și openHAB
+sunt cele mai reprezentative. Home Assistant, scris în Python și distribuit sub licență
+Apache 2.0, rulează local pe hardware modest (inclusiv Raspberry Pi) și oferă o interfață
+web completă, suport pentru sute de integrări și un motor de automatizare bazat pe
+evenimente. openHAB, scris în Java, adoptă o filosofie similară de independență față de
+cloud, cu accent pe extensibilitate prin plugin-uri.
+
+Avantajul esențial al acestor platforme este că întreaga logică de control și toate datele
+rămân în rețeaua locală a utilizatorului. Totuși, curba de învățare este semnificativă,
+iar suportul pentru \gls{ml} nativ (mai ales pentru detecția de anomalii) este limitat sau
+realizat prin integrări externe.
+
+Sistemul propus în această lucrare împărtășește filosofia local-first a platformelor
+open-source, dar se distinge prin integrarea unui motor de \gls{ml} propriu — Isolation
+Forest — rulat direct pe gateway-ul Raspberry Pi, fără a depinde de nicio bibliotecă
+externă de automatizare generică.
+
+% ======================================================================
+\section{Protocoale de comunicație IoT}
+\label{sec:studii-protocoale}
+% ======================================================================
+
+Alegerea protocolului de comunicație are implicații directe asupra consumului de resurse,
+a latenței, a scalabilității și a fiabilității unui sistem \gls{iot}. Cele mai utilizate
+protocoale în domeniu sunt \gls{mqtt}, CoAP și HTTP. Naik \cite{naik2017mqttcomparison}
+realizează o comparație detaliată a acestora, evidențiind că nu există o soluție universală
+optimă, alegerea depinzând de constrângerile concrete ale aplicației.
+
+\subsection{Comparație MQTT / CoAP / HTTP}
+
+Tabelul~\ref{tab:protocoale} sintetizează principalele caracteristici ale celor trei
+protocoale din perspectiva aplicabilității \gls{iot}.
+
+\begin{table}[H]
+\centering
+\caption{Comparație MQTT, CoAP și HTTP pentru aplicații IoT}
+\label{tab:protocoale}
+\begin{tabular}{@{}p{3.2cm} p{3.8cm} p{3.8cm} p{3.8cm}@{}}
+\toprule
+\textbf{Caracteristică} & \textbf{MQTT} & \textbf{CoAP} & \textbf{HTTP/1.1} \\
+\midrule
+Transport            & TCP           & UDP           & TCP \\
+\addlinespace
+Model comunicație    & Publish/Subscribe (broker central) & Request/Response (P2P sau proxy) & Request/Response (client–server) \\
+\addlinespace
+Overhead antet       & Minim (2–5 B antet fix) & Redus (4 B antet fix) & Mare (text, zeci–sute de octeți) \\
+\addlinespace
+QoS                  & 3 niveluri (0, 1, 2) & 2 tipuri (confirmabil / neconfirmabil) & Implicit (TCP garantează livrarea) \\
+\addlinespace
+Last Will / Retained & Da (suport nativ) & Nu (necesită extensii) & Nu \\
+\addlinespace
+Potrivire IoT        & Excelentă (multe-la-mulți, noduri cu resurse limitate) & Bună (rețele cu pierderi, IPv6/6LoWPAN) & Moderată (overhead ridicat, nepotrivit pentru microcontrolere) \\
+\addlinespace
+Securitate           & TLS/SSL opțional & DTLS opțional & TLS/SSL standard \\
+\addlinespace
+Standard             & OASIS \cite{oasis2019mqtt} & IETF RFC 7252 \cite{rfc7252} & IETF RFC 7230 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Justificarea alegerii MQTT}
+
+\gls{mqtt} a fost conceput explicit pentru conexiuni cu lățime de bandă mică și dispozitive
+cu resurse limitate \cite{oasis2019mqtt}. Modelul publish/subscribe decuplează producătorul
+de date (nodul ESP32) de consumatori (backend NestJS, motor ML), permitând mai multor
+abonați să recepționeze simultan aceleași date fără ca nodul să cunoască numărul sau
+identitatea acestora.
+
+Caracteristica \emph{Last Will and Testament} este esențială pentru monitorizarea stării
+nodurilor: la conectare, fiecare nod înregistrează un mesaj de „ultimă voință" pe topicul
+\texttt{smarthome/\{nodeId\}/status}; dacă conexiunea se întrerupe neașteptat, brokerul
+publică automat acest mesaj, informând restul sistemului. Mesajele \emph{retained} asigură
+că un abonat nou primește imediat ultima valoare a unui topic, fără a aștepta o nouă
+publicare.
+
+Mosquitto, implementarea de referință pentru medii embedded \cite{light2017mosquitto},
+rulează eficient pe Raspberry Pi 3B+ și suportă autentificare prin nume de utilizator și
+parolă, acoperind cerințele de securitate minimale ale rețelei locale. Combinația MQTT +
+Mosquitto este larg utilizată în proiecte IoT de cercetare \cite{naik2017mqttcomparison},
+ceea ce facilitează reproductibilitatea experimentelor.
+
+CoAP ar fi o alternativă pentru rețele cu pierderi mari sau IPv6/6LoWPAN, scenarii
+irelevante pentru o rețea Wi-Fi locală. HTTP, deși simplu de implementat, ar impune un
+overhead de zeci de ori mai mare față de \gls{mqtt} pentru aceeași sarcină utilă de date
+senzoriale, epuizând rapid memoria stack-ului TCP de pe microcontroler.
+
+% ======================================================================
+\section{Edge computing și procesarea locală}
+\label{sec:studii-edge}
+% ======================================================================
+
+Paradigma \emph{edge computing} plasează capacitatea de calcul cât mai aproape de sursa
+de date, reducând latența, consumul de lățime de bandă și dependența de conectivitate la
+internet. Shi et al.\ \cite{shi2016edge} definesc edge computing ca extensie a modelului
+cloud la marginea rețelei și argumentează că este esențial pentru aplicații cu cerințe
+stricte de latență și confidențialitate.
+
+În contextul \gls{iot}, Premsankar et al.\ \cite{premsankar2018edgeiot} demonstrează că
+procesarea locală reduce semnificativ volumul de date transmis spre cloud și permite
+reacții în timp real imposibil de obținut printr-o arhitectură cu cloud central. Lin et
+al.\ \cite{lin2017edge} extind analiza la scenarii de calcul mobil, arătând că un nod
+edge (cum ar fi un Raspberry Pi) poate prelua sarcini de inferență \gls{ml} de complexitate
+medie cu latențe sub o secundă.
+
+Sistemul proiectat în această lucrare adoptă integral filozofia edge computing: Raspberry
+Pi 3B+ acționează ca nod edge care stochează toate datele local (PostgreSQL + TimescaleDB),
+execută inferența Isolation Forest în timp real și publică alerte fără a implica niciun
+serviciu extern. Această arhitectură garantează funcționarea completă a sistemului chiar
+și în absența totală a internetului, răspunzând direct preocupărilor de autonomie și
+confidențialitate identificate în literatura de specialitate.
+
+% ======================================================================
+\section{Detecția de anomalii comportamentale}
+\label{sec:studii-anomalii}
+% ======================================================================
+
+Detecția de anomalii reprezintă procesul de identificare a observațiilor care se abat
+semnificativ de la comportamentul așteptat al unui sistem. Chandola et al.\
+\cite{chandola2009anomaly} oferă o taxonomie exhaustivă a metodelor existente, grupate
+în funcție de tipul de supraveghere și de tehnica statistică utilizată.
+
+\subsection{Taxonomia metodelor de detecție}
+
+\paragraph{Metode statistice.} Presupun că datele normale urmează o distribuție
+probabilistică parametrică (Gaussiană, Poisson etc.). Punctele cu probabilitate mică
+sunt considerate anomalii. Avantajul principal este interpretabilitatea matematică,
+dar metodele parametrice eșuează când distribuția reală a datelor este necunoscută
+sau multimodală — situație frecventă în datele senzoriale din locuințe.
+
+\paragraph{Metode bazate pe distanță și densitate.} \emph{Local Outlier Factor} (LOF),
+propus de Breunig et al.\ \cite{breunig2000lof}, compară densitatea locală a unui punct
+cu cea a vecinilor săi. LOF este eficient pentru clustere de densități diferite, dar
+costul computațional $\mathcal{O}(n^2)$ îl face nepotrivit pentru inferență în timp real
+pe dispozitive edge cu resurse limitate.
+
+\paragraph{One-Class SVM.} Scholkopf et al.\ \cite{scholkopf2001ocsvm} propun o variantă
+de \gls{svm} antrenată exclusiv pe date normale, care delimitează o frontieră de decizie
+în spațiul de caracteristici. Performanța depinde critic de alegerea kernelului și a
+hiperparametrilor, iar costul de inferență crește cu numărul de vectori suport.
+
+\paragraph{Metode de izolare.} Liu, Ting și Zhou \cite{liu2008isolation} introduc
+\emph{Isolation Forest}, un algoritm nesupervizat care izolează punctele anomale prin
+partiționări aleatoare succesive ale spațiului de caracteristici. Ideea centrală este
+că un punct anomal — rar și îndepărtat — va fi separat de restul printr-un număr mic
+de partiții, în timp ce un punct normal, aflat în zona densă, necesită multe partiții
+pentru a fi izolat. Scorul de anomalie este invers proporțional cu lungimea medie a
+căii de izolare. Liu et al.\ \cite{liu2012isolationtkdd} confirmă eficiența algoritmului
+pe seturi de date de mari dimensiuni, cu complexitate $\mathcal{O}(n \log n)$ la
+antrenare și $\mathcal{O}(\log n)$ la inferență.
+
+\paragraph{Metode de învățare profundă.} Chalapathy și Chawla \cite{chalapathy2019deepanomaly}
+trec în revistă utilizarea rețelelor neuronale profunde (autoencoder, LSTM, GAN) pentru
+detecția de anomalii. Aceste metode ating performanțe superioare pe seturi mari de date
+cu structuri complexe, dar necesită resurse computaționale semnificative (GPU, memorie
+RAM de ordinul gigaocteților) și date etichetate sau volume mari de antrenare, cerințe
+incompatibile cu un nod edge de tip Raspberry Pi 3B+.
+
+Cook et al.\ \cite{cook2020anomalyiot} și Fahim și Sillitti \cite{fahim2019anomaly}
+examinează specific tehnicile de detecție a anomaliilor în fluxuri \gls{iot}, subliniind
+necesitatea unor metode incrementale sau cu footprint redus. Concluzia lor converge cu
+alegerea Isolation Forest pentru sisteme cu constrângeri de resurse.
+
+\subsection{Principiul izolării — ilustrare conceptuală}
+
+\figref{fig:ml-isolation} ilustrează intuitiv diferența dintre comportamentul unui punct
+normal și cel al unui punct anomal în algoritmul Isolation Forest. Un punct anomal,
+aflat în afara norului dens de observații normale, este separat prin numai câteva
+partiționări aleatoare. Prin contrast, un punct normal, înconjurat de alți vecini apropiați,
+necesită un număr mult mai mare de partiții înainte de a fi izolat. Această asimetrie
+stă la baza scorului de anomalie: cu cât calea de izolare este mai scurtă, cu atât
+probabilitatea ca observația să fie o anomalie este mai mare.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\doublefigure]{\pics/fig-ml-isolation}
+  \caption{Principiul izolării: un punct anomal este separat prin puține partiționări
+    aleatoare, în timp ce un punct normal (din zona densă) necesită multe partiții.}
+  \label{fig:ml-isolation}
+\end{figure}
+
+\subsection{Justificarea alegerii Isolation Forest pentru sistem}
+
+Alegerea Isolation Forest ca algoritm de bază al motorului \gls{ml} din această lucrare
+este motivată de trei proprietăți esențiale, deosebit de relevante pentru mediile edge:
+
+\begin{enumerate}
+  \item \textbf{Nesupervizat.} Nu necesită date etichetate cu anomalii cunoscute — o
+    cerință imposibil de îndeplinit în practică pentru o locuință nouă, unde anomaliile
+    reale sunt rare și nedefinite a priori.
+
+  \item \textbf{Eficiență computațională.} Complexitatea $\mathcal{O}(\log n)$ la
+    inferență \cite{liu2012isolationtkdd} permite scorarea în timp real a fiecărui set
+    de citiri senzoriale pe un Raspberry Pi 3B+ (ARMv8, 1 GB RAM), fără a afecta
+    restul serviciilor (broker MQTT, baza de date, \gls{api}).
+
+  \item \textbf{Consum redus de memorie.} Modelul serializat (\texttt{isolation\_forest.pkl})
+    ocupă câțiva zeci de kiloocteți, spre deosebire de rețelele neuronale profunde care
+    pot necesita sute de megaocteți. Implementarea din scikit-learn \cite{pedregosa2011scikit}
+    este matură, testată exhaustiv și bine documentată.
+\end{enumerate}
+
+Pe lângă aceste argumente tehnice, Isolation Forest s-a dovedit robust pe date
+multidimensionale cu distribuții arbitrare \cite{liu2008isolation}, ceea ce este important
+deoarece vectorul de caracteristici al sistemului combină valori continue (temperatură,
+umiditate, gaz), valori normalizate logaritmic (luminozitate) și variabile binare/ciclice
+(oră din zi, zi din săptămână, indicator noapte/weekend).
+
+% ======================================================================
+\section{Poziționarea lucrării față de stadiul actual}
+\label{sec:studii-pozitionare}
+% ======================================================================
+
+Trecerea în revistă de mai sus permite identificarea clară a nișei pe care o ocupă
+sistemul propus față de soluțiile existente.
+
+\textbf{Față de platformele comerciale} (Alexa, Google Home, HomeKit), sistemul propus
+elimină dependența de cloud și garantează că niciun datum personal nu părăsește rețeaua
+locală. Funcționarea completă în regim offline și costul de infrastructură zero (nu există
+abonamente sau servicii de hosting) constituie avantaje practice concrete pentru utilizatorul
+final, în spiritul principiilor local-first formalizate de Kleppmann et al.\
+\cite{kleppmann2019localfirst}.
+
+\textbf{Față de platformele open-source generice} (Home Assistant, openHAB), sistemul
+propus integrează nativ un motor de detecție a anomaliilor comportamentale antrenat pe
+datele specifice locuinței, nu un sistem de reguli fix sau o integrare externă opțională.
+Această abordare permite identificarea comportamentelor anormale subtile — de exemplu, un
+model de temperatură neobișnuit la o anumită oră din zi — imposibil de captat prin simple
+praguri hardcodate.
+
+\textbf{Față de lucrările de cercetare pe detecția de anomalii IoT} \cite{cook2020anomalyiot,
+fahim2019anomaly}, contribuția principală a prezentei lucrări constă în implementarea
+completă end-to-end a unui pipeline funcțional pe hardware real de cost redus: de la
+colectarea datelor senzoriale printr-un nod ESP32, prin stocarea în TimescaleDB, la
+antrenarea zilnică automată a unui model Isolation Forest și inferența în timp real pe
+Raspberry Pi 3B+. Lucrările citate tratează frecvent problema detecției de anomalii
+în izolare, fără a aborda provocările de integrare sistem sau constrângerile edge specifice.
+
+\textbf{Noutatea esențială} a lucrării este combinarea a trei caracteristici rareori
+întâlnite simultan în literatura de specialitate: (1)~arhitectură complet \emph{local-first},
+fără nicio dependență de servicii externe; (2)~detecție de anomalii comportamentale
+prin \gls{ml} nesupervizat (\emph{Isolation Forest}), antrenat pe profilul real al
+locuinței; (3)~implementare pe hardware de consum redus și cost accesibil (ESP32 + Raspberry
+Pi), cu o interfață mobilă React Native pentru utilizatorul final.
+
+Capitolul următor (\chapref{ch:metodologie}) detaliază arhitectura sistemului și
+deciziile de proiectare care decurg din analiza prezentată mai sus.

@@ -1,0 +1,246 @@
+% cap1_introducere.tex
+\chapter{Introducere}
+\label{ch:introducere}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Context și motivație}
+\label{sec:motivatie}
+
+Locuințele inteligente reprezintă una dintre aplicațiile cu cea mai rapidă
+expansiune din domeniul \gls{iot}. Dacă la începutul deceniului trecut
+termenul „smart home" evoca un lux rezervat câtorva entuziaști, astăzi
+milioane de gospodării integrează senzori de temperatură, camere de
+supraveghere, sisteme de iluminat și asistenți vocali conectați la internet.
+Piața globală a locuințelor inteligente a depășit \$80 de miliarde în 2023
+și se preconizează o creștere susținută în anii următori
+\cite{stojkoska2017smarthome,gubbi2013iot}. La baza acestei transformări stă
+tocmai convergența \gls{iot}: dispozitive cu resurse limitate care colectează
+date din mediul fizic, le transmit în rețea și declanșează acțiuni automatizate
+în funcție de starea mediului \cite{atzori2010iot}.
+
+Cu toate acestea, marea majoritate a soluțiilor comerciale disponibile astăzi
+(Google Home, Amazon Alexa, Apple HomeKit, Tuya etc.) se bazează pe un model
+\emph{cloud-first}: datele brute ale senzorilor sunt trimise pe servere aflate
+în altă țară, procesate acolo și returnate aplicației mobile printr-un lanț
+de apeluri de rețea. Această arhitectură ridică o serie de probleme grave:
+
+\begin{itemize}
+  \item \textbf{Confidențialitate și protecția datelor.}
+  Informații sensibile privind comportamentul cotidian al locatarilor
+  (ore de prezență acasă, temperaturi, mișcări în cameră) sunt stocate
+  pe infrastructuri terțe, adesea în afara jurisdicției \gls{gdpr}
+  \cite{zheng2018smarthomeprivacy,gdpr2016}.
+  Chiar atunci când furnizorii respectă legislația europeană, utilizatorul
+  nu deține controlul efectiv asupra datelor generate în propria locuință
+  \cite{alrawi2019sokhome}.
+
+  \item \textbf{Dependența de conectivitatea la internet.}
+  Dacă furnizorul de servicii întrerupe suportul pentru un produs sau dacă
+  conexiunea la internet este indisponibilă temporar, întregul sistem poate
+  deveni nefuncțional. Experiențele legate de retragerea prematură a unor
+  platforme (Google Stadia, SmartThings Hub v2 etc.) au demonstrat că
+  \emph{vendor lock-in}-ul reprezintă un risc real pentru utilizatorii care
+  investesc în ecosisteme proprietare \cite{kleppmann2019localfirst}.
+
+  \item \textbf{Cost și complexitate.}
+  Abonamentele lunare pentru platformele cloud, costul gateway-urilor
+  proprietare și imposibilitatea de a integra hardware eterogen cresc
+  semnificativ bariera de acces. Soluțiile open-source existente (Home
+  Assistant, OpenHAB) oferă alternativă, dar cer cunoștințe tehnice
+  avansate și nu includ componente de analiză inteligentă a comportamentului.
+
+  \item \textbf{Latență și procesare la margine rețelei.}
+  Trimiterea fiecărei citiri de senzor spre cloud și așteptarea unui răspuns
+  introduce latențe inacceptabile pentru scenarii de siguranță (detectare gaz,
+  alertă de intruziune nocturnă). Paradigma \emph{edge computing} propune
+  procesarea locală a datelor, acolo unde sunt generate
+  \cite{shi2016edge}.
+\end{itemize}
+
+Aceste limitări nu sunt de natură exclusiv tehnică: ele reflectă un dezechilibru
+structural în care controlul locuinței proprii este delegat unor entități externe.
+Lucrarea de față propune o arhitectură alternativă, \emph{local-first}, care
+rezolvă fiecare dintre problemele enumerate anterior.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Problema abordată și abordarea local-first}
+\label{sec:problema}
+
+Problema centrală abordată în această lucrare este următoarea:
+\emph{Este posibil să se construiască un sistem de locuință inteligentă complet
+funcțional, capabil de monitorizare în timp real, control al actuatorilor,
+supraveghere video și detecție inteligentă a anomaliilor comportamentale,
+folosind exclusiv infrastructură locală, fără nicio dependență de servicii cloud,
+și cu un cost total de hardware accesibil?}
+
+Răspunsul propus este o arhitectură \textbf{local-first}
+\cite{kleppmann2019localfirst}: toate datele rămân în rețeaua locală (\gls{lan})
+a locatarului, procesarea se realizează pe un gateway local (\gls{rpi}), iar
+aplicația mobilă comunică direct cu serverul intern fără a tranzita internetul.
+Această abordare se înscrie în tendința mai largă de \emph{edge computing}
+\cite{shi2016edge,premsankar2018edgeiot}: în loc să se centralizeze inteligența
+în cloud, logica de decizie este mutată cât mai aproape de sursele de date
+(senzori, camere, actuatori).
+
+Sistemul implementat funcționează integral în \gls{lan}, inclusiv atunci când
+conexiunea la internet este indisponibilă. Singurul trafic care poate opțional
+ieși din rețeaua locală este notificarea push, iar și aceasta poate fi dezactivată.
+Datele personale ale utilizatorului (temperaturi, ore de prezență, imagini de la
+cameră) nu părăsesc niciodată locuința fără consimțământ explicit.
+
+Componenta de \gls{ml} — motorul de detecție a anomaliilor comportamentale bazat
+pe algoritmul \gls{if} — rulează direct pe \gls{rpi}, eliminând necesitatea
+unui serviciu cloud de inferență. Aceasta este contribuția originală centrală a
+lucrării, detaliată în \secref{sec:contributii} și dezvoltată extensiv în
+capitolele \chapref{ch:metodologie} și \chapref{ch:implementare}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Obiectivele lucrării}
+\label{sec:obiective}
+
+Lucrarea își propune proiectarea, implementarea și evaluarea unui sistem de
+locuință inteligentă local-first, cu scopuri concrete structurate pe cinci
+straturi arhitecturale. Obiectivele principale sunt:
+
+\begin{enumerate}
+  \item \textbf{Sistem funcțional pe cinci straturi.}
+  Proiectarea unei arhitecturi coerente care integrează: senzori și actuatori
+  fizici, noduri \gls{iot} bazate pe microcontrolere ESP32 programate în
+  Arduino C++, un gateway local pe \gls{rpi}, un \gls{api} \gls{rest} +
+  WebSocket și o aplicație mobilă — toate comunicând în \gls{lan} fără cloud.
+
+  \item \textbf{Achiziție de date cu hardware real.}
+  Conectarea și programarea celor 11 componente hardware reale ale nodului
+  interior (ESP32 WROOM-32 cu două senzoare \gls{dht}11, un senzor de gaz
+  MQ-2, două rezistențe fotosensibile \gls{ldr}, trei \gls{led}-uri, un
+  buzzer, un servomotor SG90 și un ventilator 5V) și a nodului exterior
+  (ESP32-CAM cu senzor \gls{pir} și cameră OV2640).
+
+  \item \textbf{Control al actuatorilor în timp real.}
+  Implementarea unui protocol de comandă bidirecțional prin \gls{mqtt} care
+  permite aprinderea/stingerea \gls{led}-urilor, pornirea ventilatorului,
+  mișcarea servo-ului (draperii), activarea buzzerului și configurarea \gls{wifi}
+  — toate inițiate din aplicația mobilă cu latență sub o secundă în \gls{lan}.
+
+  \item \textbf{Motor de \gls{ml} local pentru detecția anomaliilor.}
+  Implementarea unui pipeline complet de \gls{if} (antrenare, normalizare,
+  inferență în timp real, reantrenare automată zilnică) care rulează exclusiv
+  pe \gls{rpi}, fără apeluri externe, și care generează alerte de tip
+  \texttt{ML\_ANOMALY} integrate în sistemul de notificări al aplicației mobile.
+
+  \item \textbf{Aplicație mobilă cross-platform.}
+  Dezvoltarea unei aplicații React Native / Expo cu patru tab-uri funcționale
+  (Dashboard cu date live, Istoric cu grafice, Alerte, Control actuatori +
+  cameră), care se conectează automat la gateway prin \gls{mdns} sau adresă IP
+  și oferă autentificare \gls{jwt}.
+
+  \item \textbf{Independență completă de cloud.}
+  Demonstrarea că întregul sistem (monitorizare, control, \gls{ml}, video)
+  funcționează fără nicio dependență de servicii externe, asigurând
+  confidențialitatea datelor și reziliența la lipsa conectivității la internet.
+
+  \item \textbf{Cost redus și reproductibilitate.}
+  Construirea sistemului din componente disponibile comercial, cu un cost total
+  de hardware accesibil, și documentarea completă a firmware-ului, configurației
+  serverului și structurii bazei de date pentru a permite reproducerea independentă.
+\end{enumerate}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Contribuții originale}
+\label{sec:contributii}
+
+Principala contribuție originală a lucrării este \textbf{implementarea unui motor
+de detecție a anomaliilor comportamentale bazat pe algoritmul
+\gls{if} \cite{liu2008isolation}, rulat în întregime local pe \gls{rpi}}.
+
+Algoritmul \gls{if}, propus de Liu, Ting și Zhou \cite{liu2008isolation}, izolează
+punctele anomale printr-un mecanism de partiționare aleatoare a spațiului de
+caracteristici: punctele rare (anomale) sunt separate prin mai puțini pași
+față de punctele normale, rezultând o \emph{lungime de cale medie} mai mică și,
+implicit, un scor de anomalie mai mare. Această proprietate îl face deosebit de
+potrivit pentru scenarii de tip \emph{edge}: nu necesită etichete de antrenare
+(algoritm nesupervizat), are complexitate computațională redusă și poate fi
+reantrenant periodic pe date noi fără intervenție umană.
+
+În contextul acestui sistem, motorul \gls{ml} lucrează cu 12 trăsături extrase
+din citirile senzorilor (temperaturi de la ambele senzoare DHT11, umiditate,
+nivel de gaz normalizat, intensitate luminoasă normalizată logaritmic, prezența
+mișcării, ora zilei, ziua săptămânii, indicator de weekend/noapte, variația
+temperaturii pe o oră și numărul de evenimente de mișcare în 10 minute).
+Modelul este antrenat pe ultimele 30 de zile de date și reantrenant automat
+zilnic la ora 03:00 printr-un serviciu systemd. Inferența se realizează în timp
+real la fiecare citire nouă de senzori, fără latența unui apel de rețea spre
+cloud.
+
+Această abordare reprezintă un avans față de soluțiile comerciale existente, care
+fie nu includ deloc componente de \gls{ml}, fie externalizează procesarea spre
+servicii cloud cu implicații de confidențialitate. Spre deosebire de metodele
+supervizate care necesită date etichetate (greu de obținut în medii rezidențiale),
+\gls{if} este \emph{nesupervizat} și se adaptează automat la rutina specifică a
+locatarilor \cite{chandola2009anomaly,fahim2019anomaly,cook2020anomalyiot}.
+
+Contribuțiile secundare ale lucrării includ:
+\begin{itemize}
+  \item \textbf{Integrarea completă firmware↔broker↔API↔aplicație mobilă.}
+  Lanțul complet de la firmware Arduino C++ pe ESP32, prin brokerul Mosquitto
+  \gls{mqtt}, prin \gls{api}-ul NestJS cu TypeORM și TimescaleDB, până la
+  interfața React Native — implementat și funcțional pe hardware fizic.
+
+  \item \textbf{Arhitectura de date time-series.}
+  Utilizarea TimescaleDB (extensie PostgreSQL orientată pe serii de timp) pentru
+  stocarea eficientă a citirilor de senzori, cu indexare automată pe timestamp
+  și suport pentru interogări de agregare pe intervale temporale.
+
+  \item \textbf{Provisioning Wi-Fi și descoperire automată în rețea.}
+  Mecanism de configurare inițială prin hotspot propriu al nodului ESP32
+  (\texttt{SmartHome-Setup}), cu stocare a credențialelor în \gls{nvs} și
+  descoperire automată a gateway-ului prin \gls{mdns} (\texttt{smarthome.local}).
+
+  \item \textbf{Modul de simulare pentru dezvoltare fără hardware.}
+  Un modul \texttt{simulator/} integrat în backend-ul NestJS care generează date
+  realiste ale senzorilor (inclusiv variabilele extrase ulterior de motorul \gls{ml}),
+  permițând dezvoltarea și testarea completă a stivei software fără acces la
+  dispozitivele fizice.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Structura lucrării}
+\label{sec:structura}
+
+Lucrarea este organizată în șase capitole, fiecare abordând un aspect distinct
+al sistemului:
+
+\textbf{\chapref{ch:introducere} — Introducere} (capitolul de față) prezintă
+contextul domeniului, motivațiile care au condus la abordarea local-first,
+obiectivele concrete ale sistemului și contribuțiile originale.
+
+\textbf{\chapref{ch:studii} — Studiu bibliografic} trece în revistă literatura
+relevantă: evoluția sistemelor \gls{iot} și a locuințelor inteligente, protocoale
+de comunicație cu accent pe \gls{mqtt}, tehnici de detecție a anomaliilor în date
+de senzori (comparație între \gls{if}, LOF, One-Class SVM și metode bazate pe
+rețele neuronale), paradigma \emph{edge computing} și cadrul legal \gls{gdpr}
+privind datele personale în medii rezidențiale.
+
+\textbf{\chapref{ch:metodologie} — Metodologie și proiectare} descrie arhitectura
+pe cinci straturi a sistemului, deciziile de proiectare (alegerea componentelor
+hardware, a stivei software, a bazei de date time-series), modelarea entităților,
+fluxurile de date \gls{mqtt} și pipeline-ul complet al motorului \gls{ml}.
+
+\textbf{\chapref{ch:implementare} — Implementare} detaliază realizarea efectivă a
+fiecărui strat: firmware-ul Arduino C++ al nodului interior și al ESP32-CAM,
+configurarea brokerului Mosquitto și a \gls{rpi} ca gateway, implementarea
+\gls{api}-ului NestJS cu modulele de \gls{mqtt}, WebSocket, autentificare \gls{jwt}
+și \gls{ml}, și dezvoltarea aplicației mobile React Native cu toate funcționalitățile
+sale.
+
+\textbf{\chapref{ch:rezultate} — Rezultate și evaluare} prezintă rezultatele
+obținute: funcționarea sistemului pe hardware real, evaluarea motorului de \gls{ml}
+pe date ilustrative (cu date preliminare marcate explicit ca atare), latențele
+măsurate în \gls{lan} și o discuție critică a limitărilor actuale și a direcțiilor
+de îmbunătățire.
+
+\textbf{\chapref{ch:concluzii} — Concluzii} sintetizează contribuțiile lucrării,
+evaluează măsura în care obiectivele au fost atinse și propune direcții de
+cercetare și dezvoltare ulterioară, inclusiv extinderea la mai multe noduri,
+integrarea unor senzori suplimentari și posibilitatea unui model \gls{ml} mai
+sofisticat (autoencodere, LSTM) pentru detecția anomaliilor.

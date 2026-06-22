@@ -1,0 +1,197 @@
+% cap6_concluzii.tex
+\chapter{Concluzii și dezvoltări viitoare}
+\label{ch:concluzii}
+
+%=============================================================================
+\section{Concluzii generale}
+%=============================================================================
+
+Lucrarea de față a propus și a implementat un sistem de casă inteligentă
+\emph{local-first}, funcțional integral în rețeaua locală, fără dependență de
+servicii cloud externe~\cite{kleppmann2019localfirst}.  Obiectivul central
+formulat în \chapref{ch:introducere} — de a demonstra că securitatea,
+confidențialitatea și autonomia unui mediu rezidențial pot fi asigurate prin
+mijloace accesibile, rulate pe hardware de consum — a fost atins prin
+construirea unui sistem stratificat, de la senzorii de câmp până la interfața
+mobilă a utilizatorului.
+
+Arhitectura realizată cuprinde cinci straturi funcționale: (1)~stratul
+senzori și actuatori, compus din 11 piese hardware; (2)~stratul noduri
+\gls{iot} pe bază de \mbox{ESP32}; (3)~gateway-ul Raspberry Pi
+(\gls{rpi}), care găzduiește broker-ul \gls{mqtt} Mosquitto, baza de date
+PostgreSQL/TimescaleDB și motorul de \gls{ml}; (4)~\gls{api}-ul REST
+NestJS; și (5)~aplicația mobilă React Native.  Integrarea verticală a
+acestor componente — firmware \(\leftrightarrow\) broker \(\leftrightarrow\)
+\gls{api} \(\leftrightarrow\) aplicație mobilă — asigură un flux de date
+continuu, de la citirea brută a senzorilor până la vizualizarea în timp real
+și controlul actuatorilor.
+
+Nodul interior, bazat pe modulul ESP32 WROOM-32, integrează doi senzori de
+temperatură și umiditate \gls{dht}11, un detector de gaz MQ-2, două
+fotorezistențe \gls{ldr} pentru măsurarea luminozității ambientale, trei
+\gls{led}-uri, un buzzer, un servo SG90 pentru acționarea draperiilor și un
+ventilator de 5\,V.  Camera exterioară ESP32-CAM (AI-Thinker, senzor
+OV2640) furnizează flux video \gls{mjpeg} și detectează mișcarea prin
+senzorul \gls{pir} conectat la GPIO13.  Toate aceste piese fizice, enumerate
+detaliat în \chapref{ch:implementare}, formează stratul primar de percepție
+și acțiune al sistemului.
+
+Comunicația intra-rețea se realizează prin protocolul \gls{mqtt}
+(\mbox{OASIS}~\cite{oasis2019mqtt}), cu topicuri structurate pe spațiu de
+nume \texttt{smarthome/\{nodeId\}/...} și mecanisme de Last~Will pentru
+detectarea deconectărilor.  Descoperirea automată a gateway-ului se face prin
+\gls{mdns} (\texttt{smarthome.local}), eliminând necesitatea configurării
+manuale a adreselor \gls{ip} în aplicația mobilă.
+
+Contribuția originală a lucrării, detaliată în secțiunile dedicate din
+\chapref{ch:metodologie} și \chapref{ch:rezultate}, constă în motorul de
+detectare a anomaliilor comportamentale, implementat în Python pe
+\gls{rpi}.  Motorul extrage 12 trăsături relevante din datele senzorilor,
+include variabile temporale și contextuale, normalizează vectorii de
+trăsături cu \texttt{StandardScaler} și aplică algoritmul Isolation
+Forest~\cite{liu2008isolation}.  Inferența rulează local, în timp real, fără
+transmiterea datelor personale în exterior, în acord cu principiile
+\emph{local-first}~\cite{kleppmann2019localfirst} și cu cerințele
+\gls{gdpr}~\cite{gdpr2016}.
+
+%=============================================================================
+\section{Contribuții}
+%=============================================================================
+
+Principalele contribuții aduse prin această lucrare sunt:
+
+\begin{enumerate}
+
+\item \textbf{Arhitectură local-first completă pe cinci straturi.}  Sistemul
+demonstrează că un ecosistem de casă inteligentă poate fi construit integral
+cu componente accesibile (ESP32, Raspberry Pi) și software open-source, fără
+a recurge la platforme cloud proprietare.  Această abordare păstrează datele
+personale în rețeaua locală și menține funcționalitatea deplină chiar în
+absența accesului la internet.
+
+\item \textbf{Motor de detectare a anomaliilor cu Isolation Forest, rulat la
+marginea rețelei (\gls{edge}).}  Algoritmul Isolation Forest~\cite{liu2008isolation},
+nesupervizat prin natură, se potrivește scenariului \gls{iot} în care
+etichetele de anomalie nu sunt disponibile în prealabil.  Implementarea
+locală pe \gls{rpi} elimină latența și dependența față de un server remote,
+permi\-țând reacția în timp real la evenimente neobișnuite~\cite{shi2016edge,
+cook2020anomalyiot}.  Trăsăturile inginerești — incluzând temperatura medie a
+celor doi senzori \gls{dht}11, delta de temperatură pe o oră, numărul de
+evenimente de mișcare în ultimele 10 minute și indicatori temporali — sporesc
+capacitatea de discriminare a modelului față de o abordare bazată exclusiv pe
+valorile brute ale senzorilor.
+
+\item \textbf{Pipeline firmware–backend–mobil integrat.}  Firmware-ul
+Arduino/C++ al nodurilor publică date la fiecare ciclu de eșantionare;
+serviciul \texttt{mqtt.service.ts} din backend consumă aceste date, le
+persistă în TimescaleDB și le furnizează aplicației mobile prin Socket.IO,
+obținând o latență end-to-end sub o secundă în condiții de rețea locală.
+
+\item \textbf{Interfață mobilă orientată spre siguranță.}  Aplicația React
+Native expune un scor de siguranță calculat în timp real, o listă de alerte
+cu severitate, istoricul grafic al senzorilor și controlul direct al
+actuatorilor, oferind utilizatorului un punct unic de monitorizare și
+intervenție.
+
+\end{enumerate}
+
+%=============================================================================
+\section{Limitări ale implementării curente}
+%=============================================================================
+
+O evaluare onestă a sistemului impune recunoașterea limitărilor prezente:
+
+\paragraph{Model neantrenat pe date reale de durată.}  Modelul Isolation
+Forest a fost validat cu date sintetice și cu un set restrâns de înregistrări
+reale colectate pe o perioadă scurtă.  Pragul \texttt{ANOMALY\_THRESHOLD =
+-0{,}1} și parametrul \texttt{contamination = 0{,}05} au valori
+ilustrative, stabilite prin inspecție inițială, nu prin optimizare pe un set
+de date reprezentativ acoperind anotimpuri, pattern-uri de ocupare variate și
+tipuri diverse de anomalii.  Performanța reală în producție (precizie,
+acoperire, scor~F1) rămâne neevaluată riguros și constituie un obiectiv de
+cercetare viitoare~\cite{davis2006prcurve,fawcett2006roc}.
+
+\paragraph{Lipsa criptării pe canalul \gls{mqtt}.}  Broker-ul Mosquitto
+funcționează pe portul 1883 fără \gls{tls}, ceea ce înseamnă că traficul de
+date al senzorilor poate fi interceptat de orice dispozitiv aflat în aceeași
+rețea locală.  Deși riscul este limitat la perimetrul \gls{lan}, absența
+criptării reprezintă o vulnerabilitate față de atacatorii cu acces fizic sau
+wireless la rețea~\cite{alrawi2019sokhome}.
+
+\paragraph{Acoperire redusă a testelor automate.}  Validarea sistemului s-a
+bazat preponderent pe teste manuale și pe modulul de simulare a datelor
+(\texttt{SIMULATE=true}).  Testele unitare și de integrare acoperă parțial
+serviciile backend; nu există teste de regresie automate pentru firmware și
+nici teste end-to-end pentru fluxul complet senzor–aplicație mobilă.
+
+\paragraph{Topologie cu un singur nod interior.}  Prototipul curent suportă
+un nod interior și o cameră exterioară.  Adăugarea mai multor noduri în
+camere diferite necesită extinderea schemei de topicuri \gls{mqtt}, a
+modelului de date și a interfeței mobile, fără a fi testată în această
+iterație.
+
+%=============================================================================
+\section{Direcții de dezvoltare viitoare}
+%=============================================================================
+
+Pe baza limitărilor identificate și a potențialului neexplorat al
+arhitecturii, sunt propuse următoarele direcții de continuare:
+
+\paragraph{Antrenarea și evaluarea riguroasă a modelului \gls{ml}.}
+Colectarea unui set de date reale pe cel puțin 30–90 de zile, acoperind
+comportamente normale și evenimente anomale etichetate manual, ar permite
+optimizarea hiperparametrilor Isolation Forest și calculul metricilor
+cantitative (precizie, recall, AUC-ROC)~\cite{davis2006prcurve,fawcett2006roc,
+cook2020anomalyiot}.  Compararea cu alte metode nesupravizate (LOF~\cite{breunig2000lof},
+One-Class SVM~\cite{scholkopf2001ocsvm}) ar valida alegerea algoritmică.
+
+\paragraph{Securizarea comunicației \gls{mqtt} cu \gls{tls}.}  Configurarea
+Mosquitto cu certificate X.509 și activarea autentificării mutual-TLS pe
+portul 8883 ar elimina vulnerabilitatea de interceptare și ar alinia sistemul
+la recomandările de securitate pentru dispozitivele \gls{iot}~\cite{alrawi2019sokhome}.
+
+\paragraph{Suport multi-nod.}  Extinderea arhitecturii pentru a suporta mai
+multe noduri ESP32 în camere diferite — cu agregarea datelor la nivel de
+gateway și vizualizare per-cameră în aplicația mobilă — ar transforma
+prototipul actual într-un sistem de monitorizare la scara unei locuințe
+complete~\cite{stojkoska2017smarthome}.
+
+\paragraph{Notificări push.}  Integrarea unui serviciu de notificări
+(Firebase Cloud Messaging sau un serviciu auto-găzduit) ar permite alertarea
+utilizatorului pe dispozitivul mobil chiar și atunci când aplicația este în
+fundal sau telefonul nu este în rețeaua locală, crescând semnificativ
+caracterul practic al sistemului.
+
+\paragraph{Reguli de automatizare editabile din aplicație.}  Tabelul
+\texttt{automation\_rules} există deja în schema bazei de date, iar \gls{api}-ul
+expune endpointul \texttt{/api/rules}.  Implementarea unui editor vizual de
+reguli în aplicația mobilă — de tipul „dacă temperatura depășește 30°C și
+ora este între 10:00 și 22:00, pornește ventilatorul" — ar adăuga un nivel
+semnificativ de personalizare, fără modificări de infrastructură.
+
+\paragraph{Optimizări energetice.}  Adoptarea modului deep-sleep pe nodurile
+ESP32 și trimiterea datelor la intervale configurabile (în loc de ciclu
+continuu) ar reduce consumul energetic al nodurilor alimentate din baterie,
+extinzând aplicabilitatea sistemului la scenarii de monitorizare în zone fără
+priză permanentă~\cite{shi2016edge,premsankar2018edgeiot}.
+
+\paragraph{Îmbunătățiri ale modelului \gls{ml} prin calcul la margine.}
+Pe termen lung, migrarea motorului de inferență pe un accelerator dedicat
+(de exemplu, Coral USB, Raspberry Pi AI Kit) sau explorarea unor modele mai
+ușoare bazate pe rețele neuronale (autoencoder LSTM pentru serii de timp)
+ar putea crește acuratețea detecției și reduce latența de inferență față de
+implementarea actuală pe CPU~\cite{chalapathy2019deepanomaly,shi2016edge}.
+
+%=============================================================================
+\section{Remarci finale}
+%=============================================================================
+
+Sistemul realizat demonstrează viabilitatea unui ecosistem de casă
+inteligentă construit integral pe principii \emph{local-first}, cu hardware
+accesibil și componente software open-source.  Detecția de anomalii
+comportamentale prin Isolation Forest, rulată local pe Raspberry Pi,
+reprezintă un pas concret spre sisteme \gls{iot} rezidențiale care protejează
+confidențialitatea utilizatorilor fără a sacrifica funcționalitatea.
+Limitările identificate — model nevalidat pe date de durată, absența
+criptării \gls{mqtt}, acoperire redusă a testelor automate — trasează o
+agendă clară de îmbunătățire pentru iterațiile viitoare ale proiectului.

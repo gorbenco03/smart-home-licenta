@@ -1,0 +1,194 @@
+% =====================================================================
+%  LUCRARE DE DIPLOMĂ — Universitatea Politehnica Timișoara
+%  Facultatea de Automatică și Calculatoare — Informatică Zi
+%  Compilare:  latexmk -xelatex thesis.tex
+% =====================================================================
+\documentclass[a4paper,12pt]{scrreprt}
+
+% ── Căi ──────────────────────────────────────────────────────────────
+\def \cls {./cls}
+\def \pics {./pics}
+\def \chapters {./chapters}
+
+% ── Clasa UPT (limba română, licență) + bibliografie + glosar ────────
+\usepackage[language=romanian,type=bachelor]{\cls/standard}
+\addbibresource{\cls/bib.bib}
+\input{\cls/gls}
+
+% ── Așezare în pagină ────────────────────────────────────────────────
+\setlength{\parindent}{1.5cm}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{booktabs}
+\usepackage{float}      % opțiunea [H] pentru figuri/tabele
+\usepackage{textcomp}   % simboluri text suplimentare
+\usepackage[htt]{hyphenat} % permite despărțirea în silabe a textului \texttt (cod în text)
+
+% Macro-uri utilizate în capitole, dar nedefinite de clasă
+\providecommand{\listingref}[1]{Listarea~\ref{#1}}
+\providecommand{\textOmega}{\ensuremath{\Omega}}
+\newcommand{\slb}{/\allowbreak}   % slash cu punct de rupere pentru topicuri/căi lungi
+
+% ── Robustețe la compilare (cerute explicit) ─────────────────────────
+\usepackage{microtype}
+\usepackage{xurl}
+\setlength{\emergencystretch}{3em}
+\setlength{\headheight}{15pt}
+
+% ── Listinguri de cod: TypeScript (nu e inclus implicit) + C++ ───────
+\lstdefinelanguage{TypeScript}{
+  morekeywords={abstract,as,async,await,break,case,catch,class,const,%
+    continue,debugger,default,delete,do,else,enum,export,extends,false,%
+    finally,for,from,function,get,if,implements,import,in,instanceof,%
+    interface,let,new,null,of,private,protected,public,readonly,return,%
+    set,static,super,switch,this,throw,true,try,type,typeof,var,void,%
+    while,yield},
+  morekeywords=[2]{string,number,boolean,any,unknown,Promise,Record,Array,%
+    Partial,void},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]',
+  morestring=[b]",
+  morestring=[b]`
+}
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  columns=fullflexible,
+  breaklines=true,
+  breakatwhitespace=false,
+  keepspaces=true,
+  showstringspaces=false,
+  tabsize=2,
+  frame=single,
+  captionpos=b
+}
+
+% ── Pagina de titlu cu logo-uri (UPT stânga, AC dreapta) ─────────────
+\makeatletter
+\renewcommand{\maketitle}{
+\begin{titlepage}
+\noindent
+\includegraphics[height=2.1cm,keepaspectratio]{\pics/logo/upt}%
+\hfill
+\includegraphics[height=2.1cm,keepaspectratio]{\pics/logo/ac}
+\vspace{1em}
+\begin{center}
+Universitatea Politehnica Timișoara\\
+Facultatea de Automatică și Calculatoare\\
+Ingineria Sistemelor\\
+\vspace{5em}
+{\Huge\textbf{LUCRARE DE DIPLOMĂ}}
+\vspace{2.5em}
+
+{\huge\textbf{\@title}}
+\end{center}
+\vspace{3.5em}
+\begin{flushright}
+\Large{Absolvent\\
+\@author}
+\end{flushright}
+\vspace{2em}
+\Large{
+\begin{flushleft}
+Coordonator științific\\
+Ș.l. dr. ing. Paul NEGÎRLA\\[0.9em]
+Îndrumător\\
+Asist. univ. drd. ing. Darius NEGÎRLA
+\end{flushleft}
+\vfill
+\begin{center}
+\Large{Timișoara, \the\year}
+\end{center}
+}
+\end{titlepage}
+}
+\makeatother
+
+% =====================================================================
+\begin{document}
+% ── Front matter (numerotare romană) ─────────────────────────────────
+\pagenumbering{roman}
+
+\title{Sistem Smart Home Local-First cu Detecția Anomaliilor Comportamentale prin Învățare Automată pe Edge}
+\author{Vidac Denisa}
+\date{2026}
+
+\maketitle
+
+% ── Rezumat (RO) ─────────────────────────────────────────────────────
+\renewcommand{\abstractname}{Rezumat}
+\begin{abstract}
+\noindent
+Lucrarea prezintă proiectarea și implementarea unui sistem \textit{smart home}
+\textit{local-first}, care funcționează integral în rețeaua locală a locuinței,
+fără dependență de servicii cloud. Sistemul este organizat pe cinci straturi:
+senzori și actuatori, un nod ESP32 cu firmware Arduino, un \gls{rpi} care găzduiește
+brokerul \gls{mqtt} \textit{Mosquitto}, o bază de date PostgreSQL/TimescaleDB, un
+API NestJS și o aplicație mobilă React~Native. Nodul interior achiziționează
+temperatura și umiditatea (două senzoare \gls{dht}11), nivelul de gaz (MQ-2) și
+luminozitatea (două \gls{ldr}), și comandă trei \gls{led}-uri, un ventilator, un
+servomotor și un buzzer; o cameră ESP32-CAM cu senzor \gls{pir} acoperă exteriorul.
+Contribuția principală o reprezintă un modul de \textbf{detecție de anomalii
+comportamentale} bazat pe algoritmul \gls{if} (\textit{Isolation Forest}), antrenat
+și executat \textbf{local}, pe Raspberry Pi, care învață tiparele normale ale
+locuinței și semnalează abaterile fără reguli prestabilite. Lucrarea descrie
+arhitectura, implementarea prototipului și metodologia de evaluare, evidențiind
+avantajele de confidențialitate, cost și autonomie ale abordării locale.
+
+\medskip\noindent\textbf{Cuvinte-cheie:} smart home, Internet of Things, local-first,
+detecție de anomalii, Isolation Forest, edge computing, ESP32, MQTT, Raspberry Pi.
+\end{abstract}
+
+% ── Abstract (EN) ────────────────────────────────────────────────────
+\renewcommand{\abstractname}{Abstract}
+\begin{abstract}
+\noindent
+This thesis presents the design and implementation of a \textit{local-first}
+smart home system that operates entirely within the home's local network, with no
+dependency on cloud services. The system is organized in five layers: sensors and
+actuators, an ESP32 node running Arduino firmware, a Raspberry~Pi hosting the
+\textit{Mosquitto} \gls{mqtt} broker, a PostgreSQL/TimescaleDB database, a NestJS
+API and a React~Native mobile application. The indoor node acquires temperature and
+humidity (two \gls{dht}11 sensors), gas level (MQ-2) and illumination (two
+\gls{ldr}s), and drives three \gls{led}s, a fan, a servo motor and a buzzer; an
+ESP32-CAM with a \gls{pir} sensor covers the outdoor area. The main contribution is
+a \textbf{behavioural anomaly detection} module based on the \gls{if}
+(\textit{Isolation Forest}) algorithm, trained and executed \textbf{locally} on the
+Raspberry~Pi, which learns the household's normal patterns and flags deviations
+without predefined rules. The thesis describes the architecture, the prototype
+implementation and the evaluation methodology, highlighting the privacy, cost and
+autonomy benefits of the local approach.
+
+\medskip\noindent\textbf{Keywords:} smart home, Internet of Things, local-first,
+anomaly detection, Isolation Forest, edge computing, ESP32, MQTT, Raspberry Pi.
+\end{abstract}
+
+% ── Cuprins și liste ─────────────────────────────────────────────────
+\tableofcontents
+\listoffigures
+\addcontentsline{toc}{chapter}{\listfigurename}
+\listoftables
+\addcontentsline{toc}{chapter}{\listtablename}
+
+\printnoidxglossaries
+\clearpage
+
+% ── Main matter (numerotare arabă) ───────────────────────────────────
+\pagenumbering{arabic}
+\pagestyle{headings}
+\markboth{Universitatea Politehnica Timișoara \\ Informatică Zi, 2026 \\ Vidac Denisa}{Sistem Smart Home Local-First}
+
+\input{\chapters/cap1_introducere}
+\input{\chapters/cap2_studii}
+\input{\chapters/cap3_metodologie}
+\input{\chapters/cap4_implementare}
+\input{\chapters/cap5_rezultate}
+\input{\chapters/cap6_concluzii}
+
+% ── Bibliografie ─────────────────────────────────────────────────────
+\printbibliography[heading=bibintoc]
+
+\end{document}

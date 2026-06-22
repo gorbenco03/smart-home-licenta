@@ -31,8 +31,13 @@
         ],
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true,
+          "NSAllowsArbitraryLoadsInWebContent": true,
           "NSExceptionDomains": {
             "smarthome.local": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true
+            },
+            "smarthome-cam.local": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": true
             },

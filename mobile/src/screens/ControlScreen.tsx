@@ -7,11 +7,14 @@ import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMutation } from '@tanstack/react-query';
+import { useNavigation } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
 import { api } from '../services/api';
 import { useAppStore } from '../store';
 import { T, F, FONT } from '../theme';
 import { GlassCard, Icon, Dot, IosSwitch, SectionHeader } from '../components/ui';
 import { CAMERA_STREAM_URL, CAMERA_SNAPSHOT_URL } from '../services/config';
+import type { RootStackParamList } from '../types';
 
 /* ─── Constante nod ──────────────────────────────── */
 
@@ -47,6 +50,7 @@ export default function ControlScreen() {
   const nodeStatus = useAppStore((s) => s.nodeStatus);
   const [activeScene, setActiveScene] = useState<SceneKey>('acasa');
   const [streamOpen, setStreamOpen]   = useState(false);
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   return (
     <View style={s.root}>
@@ -59,6 +63,24 @@ export default function ControlScreen() {
           <Text style={s.kicker}>Comenzi</Text>
           <Text style={s.title}>Control</Text>
         </View>
+
+        {/* ── Programări orare ─────────────────── */}
+        <TouchableOpacity
+          style={s.scheduleEntry}
+          onPress={() => navigation.navigate('Program')}
+          activeOpacity={0.78}
+        >
+          <View style={s.scheduleLeft}>
+            <View style={s.scheduleIconBox}>
+              <Ionicons name="time-outline" size={18} color={T.accent} />
+            </View>
+            <View>
+              <Text style={s.scheduleTitle}>Programări orare</Text>
+              <Text style={s.scheduleSub}>Automatizare pe baza orei si zilei</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={T.text4} />
+        </TouchableOpacity>
 
         {/* ── Cameră ──────────────────────────── */}
         <CameraCard onOpenStream={() => setStreamOpen(true)} />
@@ -93,7 +115,7 @@ export default function ControlScreen() {
           </View>
         </View>
 
-        {/* ── Servo — perdele ──────────────────── */}
+        {/* ── Servo — draperii ──────────────────── */}
         <ServoCard nodeId={SENSOR_NODE_ID} online={nodeStatus[SENSOR_NODE_ID] ?? false} />
 
         {/* ── LED-uri ──────────────────────────── */}
@@ -104,6 +126,12 @@ export default function ControlScreen() {
 
         {/* ── Ventilator ───────────────────────── */}
         <FanCard
+          nodeId={SENSOR_NODE_ID}
+          online={nodeStatus[SENSOR_NODE_ID] ?? false}
+        />
+
+        {/* ── Detecție mișcare (PIR) ───────────── */}
+        <MotionCard
           nodeId={SENSOR_NODE_ID}
           online={nodeStatus[SENSOR_NODE_ID] ?? false}
         />
@@ -328,7 +356,7 @@ const cc = StyleSheet.create({
   },
 });
 
-/* ─── SERVO CARD (Perdele) ───────────────────────── */
+/* ─── SERVO CARD (Draperii) ───────────────────────── */
 function ServoCard({ nodeId, online }: { nodeId: string; online: boolean }) {
   const [activeAngle, setActiveAngle] = useState<number>(0);
 
@@ -356,7 +384,7 @@ function ServoCard({ nodeId, online }: { nodeId: string; online: boolean }) {
             <Ionicons name="reorder-four" size={17} color={T.accent} />
           </View>
           <View>
-            <Text style={sv.cardTitle}>Perdele</Text>
+            <Text style={sv.cardTitle}>Draperii</Text>
             <Text style={sv.cardSub}>Living</Text>
           </View>
         </View>
@@ -542,14 +570,99 @@ function LedCard({ nodeId, online }: { nodeId: string; online: boolean }) {
   );
 }
 
-/* ─── FAN CARD ───────────────────────────────────── */
-function FanCard({ nodeId, online }: { nodeId: string; online: boolean }) {
-  const [fanOn, setFanOn] = useState(false);
+/* ─── FAN CARD (manual + automat cu prag setabil) ── */
+/* ─── MOTION CARD (armare PIR din telefon) ─────────── */
+function MotionCard({ nodeId, online }: { nodeId: string; online: boolean }) {
+  const reading = useAppStore((s) => s.latestReadings[nodeId]);
+  const [armed, setArmed] = useState(false);
 
-  const mutation = useMutation({
-    mutationFn: (action: string) => api.commands.send(nodeId, action),
-    onSuccess: (_, action) => setFanOn(action === 'fan_on'),
+  useEffect(() => {
+    if (reading?.motionArmed != null) setArmed(reading.motionArmed);
+  }, [reading?.motionArmed]);
+
+  const armMut = useMutation({
+    mutationFn: (on: boolean) =>
+      api.commands.send(nodeId, on ? 'motion_arm' : 'motion_disarm'),
+    onSuccess: (_, on) => setArmed(on),
   });
+
+  const motionNow = reading?.motion ?? false;
+  const disabled = !online;
+
+  return (
+    <GlassCard style={rc.card} padding={0}>
+      <View style={rc.cardHeader}>
+        <View style={rc.headerLeft}>
+          <View style={[rc.iconBox, { backgroundColor: T.accentSoft, borderColor: T.accentLine }]}>
+            <Ionicons name="walk" size={17} color={T.accent} />
+          </View>
+          <View>
+            <Text style={rc.cardTitle}>Detecție mișcare</Text>
+            <Text style={rc.cardSub}>Senzor PIR · Curte</Text>
+          </View>
+        </View>
+        <View style={[rc.countBadge, armed && rc.countBadgeFan]}>
+          <Text style={[rc.countText, { color: armed ? (motionNow ? T.danger : T.accent) : T.text3 }]}>
+            {armed ? (motionNow ? 'MIȘCARE' : 'ARMAT') : 'DEZARMAT'}
+          </Text>
+        </View>
+      </View>
+
+      <View style={rc.divider} />
+
+      <TouchableOpacity
+        style={[rc.row, rc.rowLast]}
+        onPress={() => armMut.mutate(!armed)}
+        activeOpacity={0.7}
+        disabled={disabled || armMut.isPending}
+      >
+        <View style={[rc.ledIconBox, armed && rc.ledIconBoxFan]}>
+          <Ionicons name="shield-checkmark" size={16} color={armed ? T.accent : T.text2} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[rc.ledLabel, armed && rc.ledLabelFan]}>Alarmă mișcare</Text>
+          <Text style={[rc.ledStatus, { color: armed ? T.accent : T.text4 }]}>
+            {armed ? 'Activă — aprinde becul + alarmă la mișcare' : 'Oprită'}
+          </Text>
+        </View>
+        <IosSwitch on={armed} color={T.accent} />
+      </TouchableOpacity>
+    </GlassCard>
+  );
+}
+
+function FanCard({ nodeId, online }: { nodeId: string; online: boolean }) {
+  const reading = useAppStore((s) => s.latestReadings[nodeId]);
+  const [fanOn, setFanOn]         = useState(false);
+  const [fanAuto, setFanAuto]     = useState(true);
+  const [threshold, setThreshold] = useState(28);
+
+  // Sincronizează cu starea reală raportată de nod
+  useEffect(() => {
+    if (reading?.fanOn != null)        setFanOn(reading.fanOn);
+    if (reading?.fanAuto != null)      setFanAuto(reading.fanAuto);
+    if (reading?.fanThreshold != null) setThreshold(Math.round(reading.fanThreshold));
+  }, [reading?.fanOn, reading?.fanAuto, reading?.fanThreshold]);
+
+  const manualMut = useMutation({
+    mutationFn: (on: boolean) => api.commands.send(nodeId, on ? 'fan_on' : 'fan_off'),
+    onSuccess: (_, on) => { setFanOn(on); setFanAuto(false); },
+  });
+  const autoMut = useMutation({
+    mutationFn: () => api.commands.send(nodeId, 'fan_auto'),
+    onSuccess: () => setFanAuto(true),
+  });
+  const thrMut = useMutation({
+    mutationFn: (value: number) => api.commands.send(nodeId, 'fan_threshold', { value }),
+    onSuccess: (_, value) => setThreshold(value),
+  });
+
+  function changeThreshold(delta: number) {
+    const v = Math.min(40, Math.max(10, threshold + delta));
+    if (v !== threshold) thrMut.mutate(v);
+  }
+
+  const disabled = !online;
 
   return (
     <GlassCard style={rc.card} padding={0}>
@@ -564,23 +677,21 @@ function FanCard({ nodeId, online }: { nodeId: string; online: boolean }) {
             <Text style={rc.cardSub}>Circulatie aer</Text>
           </View>
         </View>
-        <View style={[rc.countBadge, fanOn && rc.countBadgeFan]}>
-          <Text style={[rc.countText, { color: fanOn ? T.info : T.text3 }]}>
-            {fanOn ? '1/1' : '0/1'}
-          </Text>
-          <Text style={[rc.countLabel, { color: fanOn ? T.text3 : T.text4 }]}>
-            {' '}activ
+        <View style={[rc.countBadge, (fanAuto || fanOn) && rc.countBadgeFan]}>
+          <Text style={[rc.countText, { color: fanAuto ? T.accent : (fanOn ? T.info : T.text3) }]}>
+            {fanAuto ? 'AUTO' : (fanOn ? 'PORNIT' : 'OPRIT')}
           </Text>
         </View>
       </View>
 
       <View style={rc.divider} />
 
+      {/* Comandă manuală pornit / oprit */}
       <TouchableOpacity
-        style={[rc.row, rc.rowLast]}
-        onPress={() => mutation.mutate(fanOn ? 'fan_off' : 'fan_on')}
+        style={rc.row}
+        onPress={() => manualMut.mutate(!fanOn)}
         activeOpacity={0.7}
-        disabled={!online || mutation.isPending}
+        disabled={disabled || manualMut.isPending}
       >
         <View style={[rc.ledIconBox, fanOn && rc.ledIconBoxFan]}>
           <Ionicons name="leaf" size={16} color={fanOn ? T.info : T.text2} />
@@ -588,11 +699,60 @@ function FanCard({ nodeId, online }: { nodeId: string; online: boolean }) {
         <View style={{ flex: 1 }}>
           <Text style={[rc.ledLabel, fanOn && rc.ledLabelFan]}>Ventilator 5V</Text>
           <Text style={[rc.ledStatus, { color: fanOn ? T.info : T.text4 }]}>
-            {fanOn ? 'Pornit' : 'Oprit'}
+            {fanOn ? 'Pornit (manual)' : 'Oprit'}
           </Text>
         </View>
         <IosSwitch on={fanOn} color={T.info} />
       </TouchableOpacity>
+
+      {/* Mod automat */}
+      <TouchableOpacity
+        style={rc.row}
+        onPress={() => (fanAuto ? manualMut.mutate(fanOn) : autoMut.mutate())}
+        activeOpacity={0.7}
+        disabled={disabled || autoMut.isPending}
+      >
+        <View style={[rc.ledIconBox, fanAuto && { backgroundColor: T.accentSoft, borderColor: T.accentLine }]}>
+          <Ionicons name="thermometer-outline" size={16} color={fanAuto ? T.accent : T.text2} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[rc.ledLabel, fanAuto && rc.ledLabelFan]}>Mod automat</Text>
+          <Text style={[rc.ledStatus, { color: fanAuto ? T.accent : T.text4 }]}>
+            {fanAuto ? 'Pornește singur la prag' : 'Dezactivat'}
+          </Text>
+        </View>
+        <IosSwitch on={fanAuto} color={T.accent} />
+      </TouchableOpacity>
+
+      {/* Prag de temperatură (activ în mod automat) */}
+      <View style={[rc.row, rc.rowLast, { opacity: fanAuto ? 1 : 0.45 }]}>
+        <View style={rc.ledIconBox}>
+          <Ionicons name="options-outline" size={16} color={T.text2} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={rc.ledLabel}>Prag pornire</Text>
+          <Text style={[rc.ledStatus, { color: T.text4 }]}>temperatura de declanșare</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity
+            onPress={() => changeThreshold(-1)}
+            disabled={disabled || !fanAuto || thrMut.isPending}
+            style={fanStep.btn}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="remove" size={18} color={T.text} />
+          </TouchableOpacity>
+          <Text style={fanStep.val}>{threshold}°C</Text>
+          <TouchableOpacity
+            onPress={() => changeThreshold(1)}
+            disabled={disabled || !fanAuto || thrMut.isPending}
+            style={fanStep.btn}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="add" size={18} color={T.text} />
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {!online && (
         <View style={rc.offlineWrap}>
@@ -603,6 +763,19 @@ function FanCard({ nodeId, online }: { nodeId: string; online: boolean }) {
     </GlassCard>
   );
 }
+
+const fanStep = StyleSheet.create({
+  btn: {
+    width: 34, height: 34, borderRadius: T.r.sm,
+    backgroundColor: T.glass2, borderWidth: 1, borderColor: T.glassBorder,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  val: {
+    minWidth: 52, textAlign: 'center',
+    fontSize: 17, fontFamily: FONT.numBold, color: T.text,
+    fontVariant: ['tabular-nums'],
+  },
+});
 
 const rc = StyleSheet.create({
   card: {
@@ -776,4 +949,21 @@ const s = StyleSheet.create({
     flexDirection: 'row', gap: 10,
     paddingHorizontal: T.s.xl, marginTop: 4,
   },
+
+  /* Schedule entry */
+  scheduleEntry: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginHorizontal: T.s.xl, marginBottom: T.s.md,
+    backgroundColor: T.glass2, borderWidth: 1, borderColor: T.glassBorder,
+    borderRadius: T.r.md, paddingHorizontal: T.s.lg, paddingVertical: 14,
+    ...T.shadow,
+  },
+  scheduleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  scheduleIconBox: {
+    width: 36, height: 36, borderRadius: T.r.sm,
+    backgroundColor: T.accentSoft, borderWidth: 1, borderColor: T.accentLine,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  scheduleTitle: { ...F.body, color: T.text, fontFamily: FONT.semibold },
+  scheduleSub:   { ...F.caption, marginTop: 2 },
 });

@@ -16,10 +16,12 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
   private tick = 0;
 
+  // Topologia reală: un singur nod interior (toți senzorii) + camera exterioară.
+  // Zonele Living/Dormitor/Bucătărie sunt derivate în aplicație din câmpurile
+  // aceluiași nod (DHT11 #1 = living, DHT11 #2 = dormitor, MQ-2 = bucătărie).
   private nodes: NodeState[] = [
-    { nodeId: 'esp32_node_a', location: 'living',   tempBase: 21, humBase: 52, gasBaseline: 150, lastMotion: 0 },
-    { nodeId: 'esp32_node_b', location: 'dormitor', tempBase: 19, humBase: 58, gasBaseline: 130, lastMotion: 0 },
-    { nodeId: 'esp32_cam_node', location: 'hol',    tempBase: 20, humBase: 55, gasBaseline: 140, lastMotion: 0 },
+    { nodeId: 'esp32_node_a',  location: 'interior', tempBase: 21, humBase: 52, gasBaseline: 150, lastMotion: 0 },
+    { nodeId: 'esp32_cam_node', location: 'curte',   tempBase: 0,  humBase: 0,  gasBaseline: 0,   lastMotion: 0 },
   ];
 
   constructor(
@@ -57,9 +59,8 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
 
   private async ensureNodes() {
     const nodeTypes: Record<string, string> = {
-      esp32_node_a:   'hybrid',   // senzori + servo + relay
-      esp32_node_b:   'sensor',   // senzori + relay
-      esp32_cam_node: 'camera',   // cameră MJPEG
+      esp32_node_a:   'hybrid',   // toți senzorii + servo + LED + ventilator
+      esp32_cam_node: 'camera',   // cameră MJPEG + PIR exterior
     };
     for (const node of this.nodes) {
       await this.sensorsService.upsertNode(node.nodeId, node.location, nodeTypes[node.nodeId]);
@@ -82,9 +83,21 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildReading(node: NodeState, hour: number) {
+    // Camera exterioară: publică DOAR mișcare (PIR pe GPIO13), fără senzori de mediu.
+    if (node.nodeId === 'esp32_cam_node') {
+      const motionProb = hour >= 7 && hour <= 23 ? 0.20 : 0.05;
+      return {
+        nodeId: node.nodeId,
+        location: node.location,
+        motion: Math.random() < motionProb,
+        time: new Date(),
+      };
+    }
+
     // Variație sinusoidală zi/noapte: peak la ora 14, minim la ora 3
     const dayFactor = Math.sin(((hour - 3) / 11) * Math.PI);
 
+    // DHT11 #1
     const temperature = parseFloat(
       (node.tempBase + dayFactor * 4 + this.noise(0.4)).toFixed(1)
     );
@@ -92,10 +105,24 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
       (node.humBase - dayFactor * 6 + this.noise(3)).toFixed(1)
     );
 
-    // Lumina urmărește ziua (0 noaptea, ~600 lux la prânz)
-    const lightLux = parseFloat(
-      Math.max(0, dayFactor * 500 + this.noise(30)).toFixed(1)
+    // DHT11 #2 — ușor diferit față de primul (poziție fizică diferită)
+    const temperature2 = parseFloat(
+      (node.tempBase + dayFactor * 4 + this.noise(0.6) - 0.3).toFixed(1)
     );
+    const humidity2 = parseFloat(
+      (node.humBase - dayFactor * 6 + this.noise(4) + 1.5).toFixed(1)
+    );
+
+    // LDR #1 (ADC 0–1023): mai expus la lumina naturală
+    const light1 = Math.max(0, Math.min(1023,
+      Math.round(dayFactor * 800 + this.noise(40))
+    ));
+    // LDR #2 (ADC 0–1023): mai în umbră, valori mai mici
+    const light2 = Math.max(0, Math.min(1023,
+      Math.round(dayFactor * 350 + this.noise(25))
+    ));
+    // lightLux = alias light1 (conform contractului de date firmware)
+    const lightLux = parseFloat(light1.toFixed(1));
 
     // Gaz: normal baseline, 1% șansă de spike simulat (la fiecare ~100 ticks)
     const gasSpike = this.tick % 100 === 0 && node.nodeId === 'esp32_node_a';
@@ -104,19 +131,30 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
       : Math.floor(node.gasBaseline + this.noise(25));
     const gasAlert = gasLevel > 350;
 
-    // Mișcare: mai probabil ziua (ora 7-23)
-    const motionProb = hour >= 7 && hour <= 23 ? 0.25 : 0.03;
-    const motion = Math.random() < motionProb;
+    // Nodul interior nu are PIR (mișcarea e detectată doar de camera exterioară)
+    const motion = false;
+
+    // Ventilator simulat: mod automat, prag 28°C, pornit când temp medie ≥ prag
+    const fanThreshold = 28;
+    const fanAuto = true;
+    const fanOn = (temperature + temperature2) / 2 >= fanThreshold;
 
     return {
       nodeId: node.nodeId,
       location: node.location,
       temperature,
       humidity,
+      temperature2,
+      humidity2,
       gasLevel,
       gasAlert,
       motion,
       lightLux,
+      light1,
+      light2,
+      fanOn,
+      fanAuto,
+      fanThreshold,
       time: new Date(),
     };
   }

@@ -1,0 +1,26 @@
+\babel@toc {romanian}{}\relax 
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {2.1}{\ignorespaces Principiul izolării: un punct anomal este separat prin puține partiționări aleatoare, în timp ce un punct normal (din zona densă) necesită multe partiții.}}{11}{figure.caption.17}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Arhitectura de ansamblu a sistemului, organizată pe cinci straturi. Toate componentele operează exclusiv în rețeaua locală, fără dependență de cloud.}}{14}{figure.caption.18}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Diagrama use-case a sistemului smart home. Actorul principal este utilizatorul, iar motorul ML participă ca actor secundar (sistem) prin generarea automată de alerte de anomalie.}}{16}{figure.caption.19}%
+\contentsline {figure}{\numberline {3.3}{\ignorespaces Fluxul de date în sistem. Datele de senzori circulă de la ESP32 prin Mosquitto spre NestJS, care le persistă în TimescaleDB, le transmite aplicației prin WebSocket și le evaluează prin motorul ML. Comenzile urmează traseul invers (linie punctată).}}{17}{figure.caption.20}%
+\contentsline {figure}{\numberline {3.4}{\ignorespaces Diagrama entitate-relație a bazei de date. Tabelul \texttt {sensor\_readings} este hypertable TimescaleDB particionat automat pe coloana \texttt {time}.}}{20}{figure.caption.22}%
+\contentsline {figure}{\numberline {3.5}{\ignorespaces Pipeline-ul complet al motorului ML: de la colectarea datelor din TimescaleDB, prin ingineria trăsăturilor și normalizare, până la antrenarea periodică a modelului Isolation Forest și inferența în timp real. Bucla de reantrenare zilnică și mecanismul de cold-start sunt evidențiate.}}{23}{figure.caption.24}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {4.1}{\ignorespaces Schema de conexiuni a nodului interior ESP32 WROOM-32 (pinout conform Tabelul~\ref {tab:pinout}\xspace ).}}{29}{figure.caption.27}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces Diagrama de secvență pentru fluxul de monitorizare: ESP32 → Mosquitto → NestJS → TimescaleDB → App.}}{37}{figure.caption.30}%
+\contentsline {figure}{\numberline {4.3}{\ignorespaces Diagrama de secvență pentru fluxul de comandă a actuatorilor: App → NestJS → Mosquitto → ESP32 → actuator fizic.}}{38}{figure.caption.31}%
+\contentsline {figure}{\numberline {4.4}{\ignorespaces Diagrama de secvență pentru detecția anomaliei comportamentale cu \gls {if}: NestJS apelează \texttt {infer.py} și generează alertă \texttt {ML\_ANOMALY}.}}{38}{figure.caption.32}%
+\contentsline {figure}{\numberline {4.5}{\ignorespaces Capturi reale din aplicația mobilă: (a)~Dashboard — scor de siguranță, medii ambientale și tile-uri pe camere; (b)~Alerte — cronologie cu severitate și stare de confirmare; (c)–(d)~Control — cameră live, scene, draperii (servo), \gls {led}-uri și ventilator, cu indicator „nod offline" când nodul nu este conectat.}}{42}{figure.caption.33}%
+\contentsline {subfigure}{\numberline {(a)}{\ignorespaces {Dashboard}}}{42}{subfigure.5.1}%
+\contentsline {subfigure}{\numberline {(b)}{\ignorespaces {Alerte}}}{42}{subfigure.5.2}%
+\contentsline {subfigure}{\numberline {(c)}{\ignorespaces {Control (sus)}}}{42}{subfigure.5.3}%
+\contentsline {subfigure}{\numberline {(d)}{\ignorespaces {Control (jos)}}}{42}{subfigure.5.4}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {5.1}{\ignorespaces Piramida de testare propusă pentru sistem: teste unitare la bază, teste de integrare la nivel intermediar și teste end-to-end la vârf. Lateral — testarea manuală pe hardware.}}{44}{figure.caption.34}%
+\contentsline {figure}{\numberline {5.2}{\ignorespaces Exemplu ilustrativ al scorului de anomalie pe 24\,h (date sintetice / preliminare): serie temporală a scorului \gls {if}, prag la $-0.1$ și puncte detectate ca anomalii (roșu). \textbf {Notă: datele sunt ilustrative și nu provin din operare reală de durată.}}}{51}{figure.caption.37}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\providecommand \tocbasic@end@toc@file {}\tocbasic@end@toc@file 

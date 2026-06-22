@@ -1,0 +1,18 @@
+\babel@toc {romanian}{}\relax 
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {2.1}{\ignorespaces Comparație MQTT, CoAP și HTTP pentru aplicații IoT}}{8}{table.caption.6}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {3.1}{\ignorespaces Topicurile MQTT ale sistemului smart home.}}{18}{table.caption.21}%
+\contentsline {table}{\numberline {3.2}{\ignorespaces Alegeri tehnologice — cerință, soluție adoptată și justificare.}}{22}{table.caption.23}%
+\contentsline {table}{\numberline {3.3}{\ignorespaces Cele 12 trăsături ale modelului Isolation Forest, în ordinea fixă din \texttt {FEATURE\_NAMES}.}}{24}{table.caption.25}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {4.1}{\ignorespaces Pinout complet al nodului interior (ESP32 WROOM-32).}}{29}{table.caption.26}%
+\contentsline {table}{\numberline {4.2}{\ignorespaces Principalele endpointuri \gls {rest} ale \gls {api}-ului NestJS.}}{34}{table.caption.28}%
+\contentsline {table}{\numberline {4.3}{\ignorespaces Cele 12 trăsături utilizate de motorul Isolation Forest.}}{35}{table.caption.29}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {5.1}{\ignorespaces Verificarea funcțională a componentelor sistemului.}}{46}{table.caption.35}%
+\contentsline {table}{\numberline {5.2}{\ignorespaces Indicatori de performanță operațională — valori \textbf {preliminare / ilustrative}.}}{48}{table.caption.36}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\providecommand \tocbasic@end@toc@file {}\tocbasic@end@toc@file 

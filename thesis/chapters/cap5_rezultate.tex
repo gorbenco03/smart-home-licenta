@@ -1,0 +1,435 @@
+% cap5_rezultate.tex
+\chapter{Rezultate și evaluare}
+\label{ch:rezultate}
+
+Prezentul capitol descrie metodologia de evaluare adoptată pentru prototipul de sistem smart home
+local-first și prezintă rezultatele obținute în faza curentă de dezvoltare. Sistemul se află la
+stadiul de prototip funcțional asamblat pe breadboard; modelul de \gls{ml} bazat pe
+\gls{if} nu a fost încă antrenat pe date reale de lungă durată, iar suita de teste automate
+este în curs de implementare. Prin urmare, orice cifră numerică prezentată în acest capitol este
+marcată explicit ca \textbf{valoare preliminară / ilustrativă} și reflectă fie măsurători punctuale
+obținute în sesiuni de testare manuală, fie estimări bazate pe specificațiile tehnice ale
+componentelor utilizate. Acestea urmează să fie validate statistic pe o perioadă mai lungă de
+operare.
+
+% ──────────────────────────────────────────────────────────────────────
+\section{Mediul și metodologia de testare}
+\label{sec:mediu-testare}
+% ──────────────────────────────────────────────────────────────────────
+
+\subsection{Configurația hardware de testare}
+
+Întregul prototip a fost asamblat pe breadboard, fără circuit imprimat dedicat, ceea ce introduce
+variabilitate suplimentară în măsurătorile de tensiune și timpi de răspuns. Componentele principale
+sunt:
+
+\begin{itemize}
+  \item un nod interior bazat pe ESP32 WROOM-32, cu senzorii \gls{dht}11 (×2), MQ-2,
+        \gls{ldr} (×2), buzzer, servomotor SG90 și trei \gls{led}-uri;
+  \item un nod exterior ESP32-CAM (AI-Thinker, OV2640), cu senzor \gls{pir} pe GPIO13;
+  \item un gateway Raspberry Pi 3B+ rulând Mosquitto (port 1883), PostgreSQL + TimescaleDB,
+        \gls{api}-ul NestJS (port 3000) și motorul \gls{ml} Python.
+\end{itemize}
+
+Rețeaua locală de testare este un router Wi-Fi de uz casnic; descoperirea serviciilor se realizează
+prin \gls{mdns} (\texttt{smarthome.local}, \texttt{smarthome-cam.local}).
+
+\subsection{Modul simulator}
+
+Deoarece senzorii fizici produc date cu rată de 5 secunde și necesită prezența fizică pentru
+stimularea unor scenarii (de exemplu gaz detectat), \gls{api}-ul NestJS include un modul
+\texttt{simulator/} activat prin variabila de mediu \texttt{SIMULATE=true}. Acesta generează
+citiri sintetice cu variații realiste ale tuturor câmpurilor (inclusiv \texttt{temperature2},
+\texttt{humidity2}, \texttt{light1}, \texttt{light2}), permițând testarea fluxurilor de date,
+a persistenței în baza de date și a comunicării \gls{mqtt} fără hardware conectat.
+
+\subsection{Piramida de testare propusă}
+
+Metodologia de testare urmează structura clasică în trei niveluri, ilustrată în
+\figref{fig:piramida}.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\singlefigure]{\pics/fig-piramida-testare}
+  \caption{Piramida de testare propusă pentru sistem: teste unitare la bază, teste de integrare la
+    nivel intermediar și teste end-to-end la vârf. Lateral — testarea manuală pe hardware.}
+  \label{fig:piramida}
+\end{figure}
+
+\textbf{Nivelul 1 — Teste unitare.}
+Serviciile \gls{api}-ului NestJS (autentificare, publicare comenzi, procesare alertă) și modulul
+\texttt{features.py} (calculul celor 12 trăsături, normalizarea cu StandardScaler) sunt vizate
+pentru testare cu Jest, respectiv \texttt{pytest}. Aceste teste verifică logica internă a fiecărei
+componente în izolare, cu dependențe substituibile prin mock-uri.
+
+\textbf{Nivelul 2 — Teste de integrare.}
+Scenariile de integrare vizează lanțul complet: \gls{api} NestJS $\leftrightarrow$ broker
+Mosquitto $\leftrightarrow$ baza de date PostgreSQL/TimescaleDB. Se verifică, de exemplu,
+că o citire publicată pe topicul \texttt{smarthome/esp32\_node\_a/sensors} este persistată corect
+în hypertable-ul \texttt{sensor\_readings} și propagată prin WebSocket pe canalul
+\texttt{/live}.
+
+\textbf{Nivelul 3 — Teste end-to-end.}
+Scenariile end-to-end acoperă lanțul integral firmware $\leftrightarrow$ broker $\leftrightarrow$
+\gls{api} $\leftrightarrow$ aplicație mobilă. Se verifică că o comandă emisă din interfața mobilă
+ajunge la actuatorul fizic în sub-secundă și că o alertă de gaz generată de firmware apare pe
+ecranul utilizatorului.
+
+\textbf{Testare manuală pe hardware.}
+Paralel cu testele automate (în curs de implementare), fiecare funcționalitate a fost verificată
+manual: conectarea nodului la rețea, publicarea datelor \gls{mqtt}, executarea comenzilor de
+actuator, generarea alertei de gaz și vizualizarea fluxului video de la camera ESP32-CAM.
+
+% ──────────────────────────────────────────────────────────────────────
+\section{Verificarea funcțională a sistemului}
+\label{sec:verificare-functionala}
+% ──────────────────────────────────────────────────────────────────────
+
+Tabelul~\tabref{tab:verif-functionala} centralizează funcționalitățile principale ale sistemului,
+metoda de verificare aplicată și statusul curent. Verificarea „manuală confirmat" înseamnă că
+funcționalitatea a fost testată în sesiuni de lucru pe prototipul fizic sau cu simulatorul activat.
+
+\begin{table}[H]
+  \centering
+  \caption{Verificarea funcțională a componentelor sistemului.}
+  \label{tab:verif-functionala}
+  \small
+  \begin{tabular}{p{4.8cm} p{5.4cm} p{2.6cm}}
+    \toprule
+    \textbf{Funcționalitate} & \textbf{Metodă de verificare} & \textbf{Status} \\
+    \midrule
+    Conectare ESP32 la broker \gls{mqtt} (mDNS) &
+      Monitorizare log Mosquitto; LED de stare GPIO25 &
+      Confirmat manual \\
+    \addlinespace
+    Publicare citiri senzori la 5\,s pe topicul \texttt{sensors} &
+      Subscriber MQTT extern (\texttt{mosquitto\_sub}); vizualizare dashboard &
+      Confirmat manual \\
+    \addlinespace
+    Persistare în TimescaleDB (hypertable) &
+      Interogare SQL pe \texttt{sensor\_readings}; endpointul \texttt{/api/sensors/history} &
+      Confirmat manual \\
+    \addlinespace
+    Comanda \texttt{led\_on/off/toggle} (LED 0, 1, 2) &
+      Observare vizuală; log firmware serial &
+      Confirmat manual \\
+    \addlinespace
+    Comanda \texttt{fan\_on/off} (ventilator prin tranzistor) &
+      Observare fizică + log serial &
+      Confirmat manual \\
+    \addlinespace
+    Comanda \texttt{servo\_move} (0°–180°, draperii) &
+      Observare mișcare servomotor SG90 &
+      Confirmat manual \\
+    \addlinespace
+    Comanda \texttt{buzzer\_beep} / \texttt{all\_off} &
+      Observare sonoră + log serial &
+      Confirmat manual \\
+    \addlinespace
+    Alertă gaz (\texttt{gasLevel > 350}) → \texttt{smarthome/alerts} + beep &
+      Injectare nivel gaz simulat; observare alertă în aplicație &
+      Confirmat manual \\
+    \addlinespace
+    Propagare alertă prin WebSocket → aplicație mobilă &
+      Vizualizare tab Alerte în timp real &
+      Confirmat manual \\
+    \addlinespace
+    Stare nod (Last Will \gls{mqtt}, \texttt{status} retained) &
+      Oprire bruscă ESP32; verificare flag \texttt{online=false} &
+      Confirmat manual \\
+    \addlinespace
+    Stream video ESP32-CAM (\gls{mjpeg}) + snapshot &
+      Acces \url{http://smarthome-cam.local/stream} din WebView &
+      Confirmat manual \\
+    \addlinespace
+    Autentificare \gls{jwt} + bcrypt &
+      Testare endpoint \texttt{/api/auth/login}; token valid/expirat &
+      Confirmat manual \\
+    \addlinespace
+    Provisioning Wi-Fi (hotspot \texttt{SmartHome-Setup}) &
+      Conectare la AP fallback; trimitere comandă \texttt{wifi\_update} &
+      Confirmat manual \\
+    \addlinespace
+    Inferență \gls{ml} (cold-start, reguli prag) &
+      Injectare valori extreme; verificare alertă \texttt{ML\_ANOMALY} &
+      Confirmat manual \\
+    \addlinespace
+    Simulator \texttt{SIMULATE=true} — date mock &
+      Pornire \gls{api} în mod simulator; verificare dashboard &
+      Confirmat manual \\
+    \addlinespace
+    Teste automate (Jest / pytest) &
+      Suită în curs de implementare &
+      \textit{În lucru} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Fluxul de comandă}
+
+Fluxul de comandă pornește de la interacțiunea utilizatorului în aplicația mobilă (de exemplu,
+apăsarea butonului „LED 1 ON") și traversează: \gls{api} NestJS → publicare \gls{mqtt} pe topicul
+\texttt{smarthome/esp32\_node\_a/commands} → recepție de către firmware → execuție \texttt{setLed(0,true)}.
+Confirmarea nu este transmisă explicit înapoi (firmware-ul nu publică un ACK), dar starea
+actuală se reflectă în citirea imediat următoare dacă un senzor asociat este prezent (de exemplu,
+schimbarea iluminării detectată de \gls{ldr}).
+
+\subsection{Fluxul de alertă de gaz}
+
+Detecția gazului funcționează pe front crescător: firmware-ul evaluează la fiecare citire dacă
+\texttt{gasLevel} (valoare \gls{adc} pe 10 biți, 0–1023) depășește pragul de 350. La depășire,
+dacă alerta nu era deja activă (\texttt{gasAlert == false}), firmware-ul publică imediat pe
+\texttt{smarthome/alerts}, activează buzzer-ul local (beep autonom, independent de rețea) și
+setează \texttt{gasAlert = true}. Alerta dispare (front descrescător) când nivelul scade sub 350.
+\gls{api}-ul persistă evenimentul ca \texttt{GAS\_DETECTED} și îl propagă prin WebSocket.
+
+% ──────────────────────────────────────────────────────────────────────
+\section{Performanță operațională}
+\label{sec:performanta}
+% ──────────────────────────────────────────────────────────────────────
+
+\textit{Notă: valorile din această secțiune sunt \textbf{preliminare / ilustrative}, obținute
+din sesiuni de testare manuală punctuală pe prototipul fizic sau estimate pe baza specificațiilor
+tehnice. Ele nu au caracter statistic și urmează să fie validate prin măsurători sistematice pe
+o perioadă extinsă.}
+
+\subsection{Latența comandă–actuator}
+
+Latența este definită ca intervalul dintre momentul în care aplicația mobilă emite cererea
+\texttt{POST /api/commands/\{nodeId\}} și momentul în care firmware-ul execută acțiunea (observabil
+prin \texttt{Serial.print} pe UART). Factorii care o influențează includ latența \gls{wifi} în
+\gls{lan}, timpul de procesare al broker-ului Mosquitto și bucla principală a firmware-ului
+Arduino.
+
+\subsection{Frecvența de publicare senzori}
+
+Intervalul de publicare este configurat în firmware la 5 secunde (\texttt{PUBLISH\_INTERVAL = 5000\,ms}).
+Citirea senzorilor \gls{dht}11 durează tipic 250\,ms per senzor conform specificațiilor
+producătorului~\cite{aosong2019dht11}, deci ciclul complet (2 × DHT11 + MQ-2 + 2 × \gls{ldr})
+se încadrează confortabil sub pragul de 5 secunde.
+
+\begin{table}[H]
+  \centering
+  \caption{Indicatori de performanță operațională — valori \textbf{preliminare / ilustrative}.}
+  \label{tab:performanta}
+  \small
+  \begin{tabular}{p{5.0cm} p{3.2cm} p{4.4cm}}
+    \toprule
+    \textbf{Indicator} & \textbf{Valoare ilustrativă} & \textbf{Observații} \\
+    \midrule
+    Latență comandă→actuator (\gls{lan}) &
+      $\approx 120$–$250\,\text{ms}$ &
+      Măsurată manual (timestamp log serial); variabilă în funcție de încărcare Wi-Fi \\
+    \addlinespace
+    Interval publicare citiri senzori &
+      $5\,\text{s}$ (configurat) &
+      Parametru constant în firmware; citire DHT11 $\approx 250\,\text{ms}$/senzor \\
+    \addlinespace
+    Timp răspuns \gls{api} (\texttt{/api/sensors/latest}) &
+      $< 50\,\text{ms}$ &
+      Măsurare locală cu \texttt{curl}; fără latență de rețea externă \\
+    \addlinespace
+    Consum \gls{cpu} \gls{rpi} (idle, toate serviciile active) &
+      $\approx 15$–$25\%$ &
+      Estimare \texttt{htop}; vârfuri la reantrenare ML (03:00) \\
+    \addlinespace
+    Consum \gls{ram} \gls{rpi} (toate serviciile active) &
+      $\approx 450$–$550\,\text{MB}$ &
+      PostgreSQL + NestJS + Mosquitto + Python; din totalul de 1\,GB \\
+    \addlinespace
+    Timp inferență \gls{ml} per citire (\texttt{infer.py}) &
+      $< 5\,\text{ms}$ &
+      Estimare pe baza caracteristicilor \gls{if}; neglijabil față de intervalul de 5\,s \\
+    \addlinespace
+    Latență stream video (\gls{mjpeg}) în \gls{lan} &
+      $\approx 300$–$800\,\text{ms}$ &
+      Observare subiectivă în WebView; dependentă de rezoluție OV2640 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Rezultatele preliminare indică faptul că sistemul este operabil pe hardware de uz general (\gls{rpi}
+3B+) fără a atinge limitele de resurse în condiții normale de funcționare. Vârfurile de \gls{cpu}
+la reantrenarea zilnică a modelului \gls{ml} (programată la ora 03:00 prin \texttt{scheduler.py})
+nu afectează funcționarea în timp real datorită programării în afara intervalului de utilizare.
+
+% ──────────────────────────────────────────────────────────────────────
+\section{Evaluarea detecției de anomalii}
+\label{sec:eval-anomalii}
+% ──────────────────────────────────────────────────────────────────────
+
+Detecția de anomalii comportamentale cu \gls{if} reprezintă contribuția originală a acestei
+lucrări. Aceasta este prezentată detaliat din perspectivă algoritmică în \chapref{ch:metodologie}.
+Prezenta secțiune descrie \textbf{protocolul de evaluare propus} și discută parametrii cheie ai
+modelului, cu mențiunea că evaluarea cantitativă completă urmează a fi realizată după acumularea
+unui set de date real de cel puțin 30 de zile de operare continuă.
+
+\subsection{Protocolul de evaluare propus}
+
+Evaluarea modelului \gls{if} se va realiza prin \textbf{injectare de anomalii sintetice} în date
+istorice reale. Procedura propusă cuprinde pașii următori:
+
+\begin{enumerate}
+  \item \textbf{Colectarea datelor de referință.} Se colectează minim 30 de zile de citiri
+    normale în condiții de viață reală (\texttt{sensor\_readings}), cu o rată de 5 secunde,
+    reprezentând un set de referință de cel puțin $\sim$500.000 de rânduri.
+
+  \item \textbf{Antrenarea modelului de referință.} Se antrenează modelul cu parametrii actuali:
+    \texttt{IsolationForest(contamination=0.05, n\_estimators=100)} pe datele de referință,
+    cu normalizare StandardScaler pe cele 12 trăsături din \texttt{features.py}.
+
+  \item \textbf{Generarea anomaliilor sintetice.} Se injectează perturbații controlate în setul
+    de test:
+    \begin{itemize}
+      \item spike-uri de temperatură ($+15\,°C$ față de medie, durată 1–5 minute),
+      \item nivel de gaz ridicat artificial (\texttt{gasLevel > 600}, necorelat cu temperatura),
+      \item mișcare detectată în interval de noapte (23:00–06:00) în absența altor activități,
+      \item combinații atipice de trăsături (de exemplu umiditate 95\% corelată cu temperatură scăzută).
+    \end{itemize}
+
+  \item \textbf{Evaluarea cu metrici standard.} Se calculează precizia ($P$), recall-ul ($R$),
+    scorul $F_1$ și curba \gls{roc} cu aria \gls{auc}-ROC~\cite{fawcett2006roc,davis2006prcurve}:
+    \[
+      F_1 = \frac{2 \cdot P \cdot R}{P + R}, \qquad
+      \text{AUC-ROC} = \int_0^1 \text{TPR}(u)\,\mathrm{d}u.
+    \]
+    Alegerea pragului optimal se realizează prin analiza curbei Precizie-Recall~\cite{davis2006prcurve},
+    preferată față de curba ROC în seturile dezechilibrate (anomaliile sunt rare).
+
+  \item \textbf{Sensibilitate la prag.} Se variază \texttt{ANOMALY\_THRESHOLD} în intervalul
+    $[-0.3, 0.0]$ pentru a cuantifica compromisul fals-pozitive vs.\ fals-negative.
+\end{enumerate}
+
+\subsection{Parametrii actuali ai modelului}
+
+Modelul curent, descris în \texttt{gateway/ml/train.py}, folosește:
+\begin{itemize}
+  \item \textbf{contamination = 0.05}: se presupune că 5\% din datele de antrenament pot fi
+    anomalii; aceasta determină pragul intern al arborelui de izolare~\cite{liu2008isolation};
+  \item \textbf{ANOMALY\_THRESHOLD = $-0.1$}: scorul \texttt{score\_samples} sub $-0.1$
+    declanșează o alertă \texttt{ML\_ANOMALY}; valori mai negative corespund unor puncte mai
+    ușor de izolat (mai anomale);
+  \item \textbf{n\_estimators = 100}: 100 de arbori de izolare, suficient pentru stabilizarea
+    estimărilor conform literaturii~\cite{liu2008isolation,liu2012isolationtkdd};
+  \item \textbf{reantrenare zilnică la 03:00} prin \texttt{scheduler.py} / serviciu
+    \texttt{systemd}, pe ultimele 30 de zile de date.
+\end{itemize}
+
+Alegerea pragului $-0.1$ este un punct de start conservator: permite detectarea anomaliilor
+moderate fără a inunda utilizatorul cu false pozitive. Calibrarea finală va depinde de datele
+reale și de preferința utilizatorului față de compromisul precizie–recall.
+
+\subsection{Mecanism de cold-start}
+
+Deoarece modelul \gls{if} necesită minim $\sim$500 rânduri de antrenament (aprox. 14 zile la
+5 secunde/citire cu pierderi de conectivitate incluse), sistemul funcționează în mod
+\textbf{cold-start} în primele săptămâni, folosind reguli prag hardcodate: gaz $>$ 300,
+temperatură $> 35\,°C$ sau $< 5\,°C$, mișcare în intervalul 23:00–06:00. Odată generat primul
+model valid, \texttt{infer.py} comută automat pe inferența bazată pe scor.
+
+\subsection{Rezultate ilustrative}
+
+Figura~\figref{fig:eval} prezintă un exemplu ilustrativ al comportamentului așteptat al
+detectorului de anomalii pe un interval de 24 de ore, generat cu date sintetice.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\singlefigure]{\pics/fig-eval-anomalii}
+  \caption{Exemplu ilustrativ al scorului de anomalie pe 24\,h (date sintetice / preliminare):
+    serie temporală a scorului \gls{if}, prag la $-0.1$ și puncte detectate ca anomalii (roșu).
+    \textbf{Notă: datele sunt ilustrative și nu provin din operare reală de durată.}}
+  \label{fig:eval}
+\end{figure}
+
+Graficul ilustrează mecanismul de detectare: scorul se menține în intervalul $[-0.05, 0.05]$
+pentru comportamente normale, coboară sub $-0.1$ la injectarea unor spike-uri sintetice de
+temperatură și gaz, și revine la normal odată ce perturbația dispare. Pe datele sintetice folosite
+în faza de dezvoltare, parametrii actuali (\texttt{contamination=0.05}, prag $-0.1$) au produs
+rezultate orientative de $F_1 \approx 0.78$ — valoare \textbf{strict ilustrativă}, obținută
+pe un set mic de anomalii injectate manual, fără semnificație statistică.
+
+% ──────────────────────────────────────────────────────────────────────
+\section{Discuție: avantaje confirmate și limitări actuale}
+\label{sec:discutie}
+% ──────────────────────────────────────────────────────────────────────
+
+\subsection{Avantaje confirmate ale abordării}
+
+\textbf{Funcționare local-first.}
+Verificarea funcțională a confirmat că toate fluxurile principale (monitorizare, control, alertă,
+inferență \gls{ml}) funcționează integral în \gls{lan}, fără dependențe de servicii externe.
+Deconectarea de la internet nu afectează niciuna dintre funcționalitățile de bază, ceea ce
+aliniază sistemul cu principiile local-first~\cite{kleppmann2019localfirst} și adresează
+preocupările de confidențialitate documentate în literatura \gls{gdpr}~\cite{zheng2018smarthomeprivacy,gdpr2016}.
+
+\textbf{Cost redus al platformei hardware.}
+Arhitectura bazată pe ESP32 (~3–5 EUR/unitate) și \gls{rpi} 3B+ (~35 EUR) demonstrează că
+un sistem smart home cu \gls{ml} integrat este realizabil la un cost total al componentelor
+sub 60 EUR, față de soluțiile comerciale care implică abonamente lunare și dependențe de cloud.
+
+\textbf{Inferență \gls{ml} la margine (edge).}
+Execuția modelului \gls{if} direct pe \gls{rpi}, cu timpi de inferență sub 5\,ms per citire,
+confirmă fezabilitatea abordării edge-ML pentru scenarii \gls{iot} rezidențiale~\cite{shi2016edge,premsankar2018edgeiot}.
+Modelul nesupervizat nu necesită date etichetate, avantaj esențial pentru utilizatorul rezidențial
+care nu poate produce etichete manuale~\cite{chandola2009anomaly,cook2020anomalyiot}.
+
+\textbf{Modularitate și extensibilitate.}
+Separarea clară între firmware (Arduino C++), gateway (NestJS + Python) și aplicație mobilă
+(React Native/Expo) facilitează adăugarea de noi noduri, senzori sau reguli de automatizare fără
+modificarea celorlalte straturi.
+
+\subsection{Limitări actuale}
+
+\textbf{Absența datelor reale de lungă durată.}
+Cea mai semnificativă limitare actuală este că modelul \gls{if} nu a fost antrenat pe date
+reale provenite din operarea continuă a sistemului. Performanța sa reală — în termeni de
+precizie, recall și $F_1$ — nu poate fi afirmată cu certitudine și urmează să fie măsurată
+după cel puțin 30–60 de zile de colectare continuă.
+
+\textbf{Absența \gls{tls} pe \gls{mqtt}.}
+Comunicarea \gls{mqtt} curentă se realizează pe portul 1883 (plaintext), cu autentificare
+simplă prin nume de utilizator și parolă. Deși acest lucru este acceptabil într-o rețea locală
+controlată, adăugarea \gls{tls} (portul 8883) este planificată pentru versiunile viitoare,
+în conformitate cu recomandările de securitate pentru dispozitive \gls{iot}~\cite{alrawi2019sokhome}.
+
+\textbf{Absența testelor automate.}
+Suita de teste Jest (pentru NestJS) și pytest (pentru \texttt{features.py}) nu este încă
+implementată. Aceasta limitează capacitatea de regresie și face verificarea funcționalităților
+dependentă de testarea manuală.
+
+\textbf{Prototip pe breadboard.}
+Asamblarea pe breadboard introduce conexiuni nesigure și variabilitate în măsurătorile analogice
+(\gls{adc}), în special pentru senzorul MQ-2 și \gls{ldr}-uri. Migrarea pe un circuit imprimat
+dedicat (PCB) sau cel puțin pe o placă de prototipare permanentă (perfboard) ar îmbunătăți
+repetabilitatea măsurătorilor.
+
+\textbf{Scalabilitate — nod unic interior.}
+Topologia curentă include un singur nod interior. Extinderea la mai multe noduri (camere
+diferite) ar necesita ajustarea modelului \gls{ml} pentru a trata fiecare locație independent
+sau a construi un model agregat.
+
+\textbf{Calibrarea senzorului MQ-2.}
+Senzorul MQ-2~\cite{hanwei2020mq2} necesită o perioadă de preîncălzire (24–48 ore) și o
+calibrare în aer curat (\textit{R\textsubscript{0}}) pentru a produce valori absolute de
+concentrație (ppm). În prototipul curent se folosesc valori ADC brute (0–1023), suficiente
+pentru detecția unui prag de alertă dar necorespunzătoare pentru cuantificarea precisă a
+concentrației de gaz.
+
+% ──────────────────────────────────────────────────────────────────────
+\section{Sinteză}
+\label{sec:sinteza-rezultate}
+% ──────────────────────────────────────────────────────────────────────
+
+Capitolul a prezentat metodologia de evaluare adoptată pentru prototipul de sistem smart home
+local-first și a raportat starea curentă a verificărilor. Toate funcționalitățile principale
+— de la publicarea datelor \gls{mqtt} și persistarea în TimescaleDB, la controlul actuatoarelor
+și propagarea alertelor prin WebSocket — au fost confirmate prin testare manuală. Indicatorii
+de performanță operațională (latență, consum resurse pe \gls{rpi}, timp inferență \gls{ml})
+au fost prezentați ca valori ilustrative/preliminare, obținute în sesiuni punctuale de testare.
+
+Protocolul de evaluare a detecției de anomalii cu \gls{if} a fost definit complet, inclusiv
+metrica de injectare de anomalii sintetice, metricile $F_1$ și AUC-ROC și analiza sensibilității
+la prag. Evaluarea cantitativă definitivă va deveni posibilă după acumularea datelor de operare
+reală. Limitările principale identificate — absența \gls{tls} pe \gls{mqtt}, lipsa testelor
+automate și dependența de date de durată pentru model — constituie direcții concrete de
+dezvoltare ulterioară, discutate în \chapref{ch:concluzii}.

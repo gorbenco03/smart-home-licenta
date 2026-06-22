@@ -44,11 +44,18 @@ class AnomalyDetector:
 
         try:
             df = pd.DataFrame([reading])
-            df['time'] = pd.to_datetime(reading.get('timestamp', datetime.now().timestamp()), unit='s')
+            df['time']       = pd.to_datetime(reading.get('timestamp', datetime.now().timestamp()), unit='s')
             df['gas_level']  = reading.get('gas_level', 0)
             df['gas_alert']  = reading.get('gas_alert', False)
-            df['light_lux']  = reading.get('light_lux', 0)
+            # light1 (LDR ADC 0–1023) este sursa primară; light_lux = alias backward-compat
+            df['light1']     = reading.get('light1', reading.get('light_lux', 0))
+            df['light_lux']  = df['light1']
             df['motion']     = int(reading.get('motion', False))
+            # DHT11 #2 — opțional; features.py face fallback la #1 dacă lipsește
+            if 'temperature2' in reading:
+                df['temperature2'] = reading['temperature2']
+            if 'humidity2' in reading:
+                df['humidity2'] = reading['humidity2']
 
             X = build_features(df)
             X_scaled = self._scaler.transform(X)
@@ -88,16 +95,18 @@ if __name__ == "__main__":
 
     normal = {
         "temperature": 22.0, "humidity": 55.0,
+        "temperature2": 21.5, "humidity2": 57.0,
         "gas_level": 150, "gas_alert": False,
-        "motion": False, "light_lux": 300.0,
+        "motion": False, "light1": 410, "light_lux": 410,
         "timestamp": datetime.now().timestamp()
     }
     print("Citire normală:", detector.score(normal))
 
     anomaly = {
         "temperature": 32.0, "humidity": 85.0,
+        "temperature2": 31.2, "humidity2": 83.0,
         "gas_level": 200, "gas_alert": False,
-        "motion": True, "light_lux": 5.0,
+        "motion": True, "light1": 5, "light_lux": 5,
         "timestamp": datetime.now().timestamp()
     }
     print("Citire suspectă:", detector.score(anomaly))

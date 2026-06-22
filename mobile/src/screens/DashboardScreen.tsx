@@ -90,8 +90,19 @@ export default function DashboardScreen() {
 
   const sortedNodes = nodes ? [...nodes].sort((a, b) => a.nodeId.localeCompare(b.nodeId)) : [];
 
-  const hasDualSensors =
-    readingWithTemp2 != null || readingWithLight1 != null || readingWithLight2 != null;
+  const hasLight = readingWithLight1 != null || readingWithLight2 != null;
+
+  // Nodul interior real = un singur ESP32 cu toți senzorii.
+  // Zonele Living/Dormitor/Bucătărie sunt derivate din câmpurile lui.
+  const indoor =
+    allReadings.find(r => r.gasLevel != null || r.temperature2 != null) ??
+    allReadings.find(r => r.temperature != null) ?? null;
+  const indoorOnline = indoor != null;
+
+  // Nodul exterior (ESP32-CAM) — doar mișcare (PIR)
+  const CAM_ID = 'esp32_cam_node';
+  const outdoor = latestReadings[CAM_ID] ?? null;
+  const outdoorOnline = nodeStatus[CAM_ID] ?? (outdoor != null);
 
   return (
     <View style={s.root}>
@@ -223,168 +234,55 @@ export default function DashboardScreen() {
           </View>
         </GlassCard>
 
-        {/* ── DUAL SENSORS SECTION ── */}
-        {hasDualSensors && (
-          <>
-            <View style={s.sectionRow}>
-              <Text style={s.sectionLabel}>Senzori duali</Text>
-              <Text style={s.sectionMeta}>date in timp real</Text>
-            </View>
-
-            <View style={s.dualGrid}>
-              {/* Living DHT11 — temperature + humidity */}
-              <GlassCard style={s.dualCard} intensity={20} padding={14}>
-                <View style={s.dualCardHeader}>
-                  <View style={[s.dualIconWrap, { backgroundColor: T.warningSoft }]}>
-                    <Icon name="thermometer-outline" size={14} color={T.warning} />
-                  </View>
-                  <Text style={s.dualLabel}>Living</Text>
-                  <Text style={s.dualSublabel}>DHT11 primar</Text>
-                </View>
-                <View style={s.dualValues}>
-                  <View style={s.dualValueItem}>
-                    <Text style={[s.dualBigNum, { color: T.warning }]}>
-                      {avgTemp != null ? avgTemp.toFixed(1) : '—'}
-                      <Text style={s.dualBigUnit}> °C</Text>
-                    </Text>
-                    <Text style={s.dualCaption}>temperatura</Text>
-                  </View>
-                  <View style={s.dualValueItem}>
-                    <Text style={[s.dualBigNum, { color: T.info }]}>
-                      {avgHumid != null ? Math.round(avgHumid).toString() : '—'}
-                      <Text style={s.dualBigUnit}> %</Text>
-                    </Text>
-                    <Text style={s.dualCaption}>umiditate</Text>
-                  </View>
-                </View>
-                <Sparkline data={TREND_TEMP} width={96} height={28} color={T.warning} strokeWidth={1.8} />
-              </GlassCard>
-
-              {/* Dormitor DHT11 — temperature2 + humidity2 */}
-              {readingWithTemp2 != null ? (
-                <GlassCard style={s.dualCard} intensity={20} padding={14}>
-                  <View style={s.dualCardHeader}>
-                    <View style={[s.dualIconWrap, { backgroundColor: T.violetSoft }]}>
-                      <Icon name="bed-outline" size={14} color={T.violet} />
-                    </View>
-                    <Text style={s.dualLabel}>Dormitor</Text>
-                    <Text style={s.dualSublabel}>DHT11 secundar</Text>
-                  </View>
-                  <View style={s.dualValues}>
-                    <View style={s.dualValueItem}>
-                      <Text style={[s.dualBigNum, { color: T.violet }]}>
-                        {readingWithTemp2.temperature2!.toFixed(1)}
-                        <Text style={s.dualBigUnit}> °C</Text>
-                      </Text>
-                      <Text style={s.dualCaption}>temperatura</Text>
-                    </View>
-                    <View style={s.dualValueItem}>
-                      <Text style={[s.dualBigNum, { color: T.cyan }]}>
-                        {readingWithTemp2.humidity2 != null
-                          ? readingWithTemp2.humidity2.toFixed(0)
-                          : '—'}
-                        <Text style={s.dualBigUnit}> %</Text>
-                      </Text>
-                      <Text style={s.dualCaption}>umiditate</Text>
-                    </View>
-                  </View>
-                  <Sparkline data={TREND_TEMP2} width={96} height={28} color={T.violet} strokeWidth={1.8} />
-                </GlassCard>
-              ) : (
-                <GlassCard style={[s.dualCard, s.dualCardEmpty]} intensity={14} padding={14}>
-                  <Icon name="bed-outline" size={22} color={T.text4} />
-                  <Text style={s.dualEmptyText}>Dormitor{'\n'}indisponibil</Text>
-                </GlassCard>
-              )}
-
-              {/* LDR 1 */}
-              {readingWithLight1 != null ? (
-                <GlassCard style={s.dualCard} intensity={20} padding={14}>
-                  <View style={s.dualCardHeader}>
-                    <View style={[s.dualIconWrap, { backgroundColor: T.accentSoft }]}>
-                      <Icon name="sunny-outline" size={14} color={T.accentHi} />
-                    </View>
-                    <Text style={s.dualLabel}>LDR 1</Text>
-                    <Text style={s.dualSublabel}>senzor lumina</Text>
-                  </View>
-                  <View style={s.dualValues}>
-                    <View style={s.dualValueItem}>
-                      <Text style={[s.dualBigNum, { color: T.accentHi }]}>
-                        {String(readingWithLight1.light1!)}
-                        <Text style={s.dualBigUnit}> /1023</Text>
-                      </Text>
-                      <Text style={s.dualCaption}>intensitate</Text>
-                    </View>
-                  </View>
-                  <Sparkline data={TREND_LIGHT} width={96} height={28} color={T.accentHi} strokeWidth={1.8} />
-                </GlassCard>
-              ) : (
-                <GlassCard style={[s.dualCard, s.dualCardEmpty]} intensity={14} padding={14}>
-                  <Icon name="sunny-outline" size={22} color={T.text4} />
-                  <Text style={s.dualEmptyText}>LDR 1{'\n'}indisponibil</Text>
-                </GlassCard>
-              )}
-
-              {/* LDR 2 */}
-              {readingWithLight2 != null ? (
-                <GlassCard style={s.dualCard} intensity={20} padding={14}>
-                  <View style={s.dualCardHeader}>
-                    <View style={[s.dualIconWrap, { backgroundColor: T.cyanSoft }]}>
-                      <Icon name="partly-sunny-outline" size={14} color={T.cyan} />
-                    </View>
-                    <Text style={s.dualLabel}>LDR 2</Text>
-                    <Text style={s.dualSublabel}>senzor lumina</Text>
-                  </View>
-                  <View style={s.dualValues}>
-                    <View style={s.dualValueItem}>
-                      <Text style={[s.dualBigNum, { color: T.cyan }]}>
-                        {String(readingWithLight2.light2!)}
-                        <Text style={s.dualBigUnit}> /1023</Text>
-                      </Text>
-                      <Text style={s.dualCaption}>intensitate</Text>
-                    </View>
-                  </View>
-                  <Sparkline data={TREND_LIGHT} width={96} height={28} color={T.cyan} strokeWidth={1.8} />
-                </GlassCard>
-              ) : (
-                <GlassCard style={[s.dualCard, s.dualCardEmpty]} intensity={14} padding={14}>
-                  <Icon name="partly-sunny-outline" size={22} color={T.text4} />
-                  <Text style={s.dualEmptyText}>LDR 2{'\n'}indisponibil</Text>
-                </GlassCard>
-              )}
-            </View>
-          </>
-        )}
-
-        {/* ── CAMERE SECTION ── */}
+        {/* ── CAMERE / ZONE SECTION ── */}
         <View style={s.sectionRow}>
           <Text style={s.sectionLabel}>Camere</Text>
           <View style={s.sectionMetaRow}>
-            <Dot color={onlineCount > 0 ? T.success : T.text3} size={6} glow={onlineCount > 0} />
-            <Text style={s.sectionMeta}>{onlineCount} din {(nodes ?? []).length} online</Text>
+            <Dot color={indoorOnline ? T.success : T.text3} size={6} glow={indoorOnline} />
+            <Text style={s.sectionMeta}>
+              {indoorOnline ? 'nod interior online' : 'nod interior offline'}
+            </Text>
           </View>
         </View>
 
-        {/* ── ROOM TILES 2-column ── */}
         <View style={s.tilesGrid}>
-          {sortedNodes.map((node) => {
-            const reading = latestReadings[node.nodeId] ?? null;
-            const online = nodeStatus[node.nodeId] ?? node.online;
-            return (
-              <RoomTile
-                key={node.nodeId}
-                name={node.location}
-                nodeId={node.nodeId}
-                reading={reading}
-                online={online}
-              />
-            );
-          })}
-          {sortedNodes.length === 0 && !isLoading && (
+          {/* Living — DHT11 #1 + LDR 1 */}
+          <TempZone
+            name="Living"
+            icon="tv-outline"
+            color={T.warning}
+            temp={indoor?.temperature ?? null}
+            humid={indoor?.humidity ?? null}
+            light={indoor?.light1 ?? null}
+            online={indoorOnline}
+          />
+          {/* Dormitor — DHT11 #2 + LDR 2 */}
+          <TempZone
+            name="Dormitor"
+            icon="bed-outline"
+            color={T.violet}
+            temp={indoor?.temperature2 ?? null}
+            humid={indoor?.humidity2 ?? null}
+            light={indoor?.light2 ?? null}
+            online={indoorOnline}
+          />
+          {/* Bucătărie — MQ-2 (senzor de gaz) */}
+          <GasZone
+            gas={indoor?.gasLevel ?? null}
+            alert={indoor?.gasAlert ?? false}
+            online={indoorOnline}
+          />
+          {/* Curte — ESP32-CAM (mișcare PIR exterior) */}
+          <MotionZone
+            motion={outdoor?.motion ?? false}
+            online={outdoorOnline}
+          />
+
+          {!indoor && !isLoading && (
             <View style={s.emptyWrap}>
               <Icon name="cloud-offline-outline" size={32} color={T.text4} />
               <Text style={s.empty}>
-                Niciun nod gasit.{'\n'}Verifica ca backend-ul ruleaza.
+                Nodul interior nu trimite date.{'\n'}Verifica ESP32 / backend-ul.
               </Text>
             </View>
           )}
@@ -435,97 +333,153 @@ const ms = StyleSheet.create({
   unit: { fontSize: 11.5, fontFamily: FONT.medium, color: T.text3, paddingBottom: 2 },
 });
 
-/* ── ROOM TILE ───────────────────────────────────── */
-function RoomTile({
-  name, nodeId, reading, online,
-}: { name: string; nodeId: string; reading: SensorReading | null; online: boolean }) {
-  const alert = reading?.gasAlert ?? false;
-
+/* ── ZONĂ cu temperatură (Living / Dormitor) ──────── */
+function TempZone({
+  name, icon, color, temp, humid, light, online,
+}: {
+  name: string;
+  icon: keyof typeof import('@expo/vector-icons').Ionicons.glyphMap;
+  color: string;
+  temp: number | null;
+  humid: number | null;
+  light: number | null;
+  online: boolean;
+}) {
   return (
     <GlassCard
       style={[s.roomCard, !online && s.roomOffline]}
-      tone={alert ? 'danger' : 'default'}
       intensity={online ? 22 : 10}
       padding={0}
     >
-      {/* Alert stripe */}
-      {alert && (
-        <LinearGradient
-          colors={[T.danger, 'transparent'] as const}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={s.alertBand}
-          pointerEvents="none"
-        />
-      )}
-
       <View style={s.roomPadding}>
-        {/* Header row */}
         <View style={s.roomHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={s.roomName} numberOfLines={1}>
-              {name.charAt(0).toUpperCase() + name.slice(1)}
-            </Text>
+            <Text style={s.roomName} numberOfLines={1}>{name}</Text>
             <View style={s.roomStatusRow}>
-              <Dot
-                color={online ? T.success : T.text3}
-                size={6}
-                glow={online}
-              />
+              <Dot color={online ? T.success : T.text3} size={6} glow={online} />
               <Text style={[s.roomStatus, { color: online ? T.success : T.text3 }]}>
                 {online ? 'Online' : 'Offline'}
               </Text>
             </View>
           </View>
-          {alert && (
-            <View style={s.alertBadge}>
-              <Icon name="warning" size={12} color={T.danger} />
-            </View>
-          )}
+          <View style={[s.zoneIcon, { backgroundColor: T.glass2 }]}>
+            <Icon name={icon} size={15} color={color} />
+          </View>
         </View>
 
-        {reading ? (
+        {temp != null ? (
           <>
-            {/* Temperature big display */}
             <View style={s.tempRow}>
-              <Text style={[s.temp, alert && { color: T.dangerHi }]}>
-                {reading.temperature?.toFixed(1) ?? '—'}
-              </Text>
+              <Text style={s.temp}>{temp.toFixed(1)}</Text>
               <Text style={s.tempUnit}>°C</Text>
             </View>
-
-            {/* Meta row */}
             <View style={s.metaRow}>
               <View style={s.metaItem}>
                 <Icon name="water-outline" size={12} color={T.info} />
                 <Text style={s.metaVal}>
-                  {reading.humidity?.toFixed(0) ?? '—'}
+                  {humid != null ? humid.toFixed(0) : '—'}
                   <Text style={s.metaUnit}>%</Text>
                 </Text>
               </View>
               <View style={s.metaDot} />
               <View style={s.metaItem}>
-                <Dot
-                  color={reading.motion ? T.accent : T.text3}
-                  size={5}
-                  glow={reading.motion}
-                />
-                <Text style={[s.metaVal, { color: reading.motion ? T.accent : T.text3 }]}>
-                  {reading.motion ? 'miscare' : 'liniste'}
+                <Icon name="sunny-outline" size={12} color={T.accentHi} />
+                <Text style={s.metaVal}>
+                  {light != null ? String(light) : '—'}
+                  <Text style={s.metaUnit}> lx</Text>
                 </Text>
               </View>
             </View>
+          </>
+        ) : (
+          <View style={s.noDataWrap}>
+            <Icon name="hourglass-outline" size={18} color={T.text3} />
+            <Text style={s.noData}>Astept date...</Text>
+          </View>
+        )}
+      </View>
+    </GlassCard>
+  );
+}
 
-            {/* Timestamp — uses text3 (not text4) */}
-            <View style={s.tsRow}>
-              <Icon name="time-outline" size={11} color={T.text3} />
-              <Text style={s.tsText}>
-                {new Date(reading.time).toLocaleTimeString('ro-RO', {
-                  hour: '2-digit', minute: '2-digit',
-                })}
+/* ── ZONĂ Curte (ESP32-CAM, mișcare PIR) ──────────── */
+function MotionZone({
+  motion, online,
+}: { motion: boolean; online: boolean }) {
+  return (
+    <GlassCard
+      style={[s.roomCard, !online && s.roomOffline]}
+      intensity={online ? 22 : 10}
+      padding={0}
+    >
+      <View style={s.roomPadding}>
+        <View style={s.roomHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.roomName} numberOfLines={1}>Curte</Text>
+            <View style={s.roomStatusRow}>
+              <Dot color={online ? T.success : T.text3} size={6} glow={online} />
+              <Text style={[s.roomStatus, { color: online ? T.success : T.text3 }]}>
+                {online ? 'Online' : 'Offline'}
               </Text>
             </View>
-          </>
+          </View>
+          <View style={[s.zoneIcon, { backgroundColor: motion ? T.accentSoft : T.glass2 }]}>
+            <Icon name="videocam-outline" size={15} color={motion ? T.accent : T.info} />
+          </View>
+        </View>
+
+        <View style={[s.tempRow, { marginTop: 2 }]}>
+          <Icon name={motion ? 'walk' : 'shield-checkmark-outline'} size={22} color={motion ? T.accent : T.success} />
+          <Text style={[s.motionText, { color: motion ? T.accent : T.text2 }]}>
+            {motion ? 'Mișcare' : 'Liniște'}
+          </Text>
+        </View>
+        <View style={s.metaRow}>
+          <View style={s.metaItem}>
+            <Icon name="camera-outline" size={12} color={T.text3} />
+            <Text style={s.metaVal}>flux video în Control</Text>
+          </View>
+        </View>
+      </View>
+    </GlassCard>
+  );
+}
+
+/* ── ZONĂ Bucătărie (senzor de gaz) ───────────────── */
+function GasZone({
+  gas, alert, online,
+}: { gas: number | null; alert: boolean; online: boolean }) {
+  return (
+    <GlassCard
+      style={[s.gasCard, !online && s.roomOffline]}
+      tone={alert ? 'danger' : 'default'}
+      intensity={online ? 22 : 10}
+      padding={0}
+    >
+      <View style={s.roomPadding}>
+        <View style={s.roomHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.roomName} numberOfLines={1}>Bucătărie</Text>
+            <View style={s.roomStatusRow}>
+              <Dot color={online ? T.success : T.text3} size={6} glow={online} />
+              <Text style={[s.roomStatus, { color: online ? T.success : T.text3 }]}>
+                {online ? 'Online' : 'Offline'}
+              </Text>
+            </View>
+          </View>
+          <View style={[s.zoneIcon, { backgroundColor: alert ? T.dangerSoft : T.glass2 }]}>
+            <Icon name="flame-outline" size={15} color={alert ? T.danger : T.success} />
+          </View>
+        </View>
+
+        {gas != null ? (
+          <View style={{ marginTop: T.s.xs }}>
+            <View style={s.gasValueRow}>
+              <Text style={[s.gasValue, { color: alert ? T.dangerHi : T.text }]}>{gas}</Text>
+              <Text style={s.gasUnit}>nivel gaz (ADC)</Text>
+            </View>
+            <GasBar value={gas} alert={alert} />
+          </View>
         ) : (
           <View style={s.noDataWrap}>
             <Icon name="hourglass-outline" size={18} color={T.text3} />
@@ -699,6 +653,27 @@ const s = StyleSheet.create({
   roomCard: {
     width: '47.5%',
   },
+  gasCard: {
+    width: '47.5%',
+  },
+  motionText: {
+    fontSize: 18,
+    fontFamily: FONT.displaySemi,
+    letterSpacing: -0.3,
+  },
+  zoneIcon: {
+    width: 30, height: 30, borderRadius: T.r.sm,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: T.glassBorder,
+  },
+  gasValueRow: {
+    flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: T.s.sm,
+  },
+  gasValue: {
+    fontSize: 28, fontFamily: FONT.numBold,
+    fontVariant: ['tabular-nums'], letterSpacing: -0.6,
+  },
+  gasUnit: { ...F.caption },
   roomOffline: { opacity: 0.5 },
   alertBand: {
     position: 'absolute',

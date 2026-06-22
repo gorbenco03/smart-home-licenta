@@ -1,0 +1,596 @@
+% cap3_metodologie.tex
+\chapter{Metodologie și arhitectura sistemului}
+\label{ch:metodologie}
+
+Capitolul de față descrie principiile de proiectare care au ghidat construcția sistemului,
+arhitectura de ansamblu pe cinci straturi, cerințele funcționale și nefuncționale, fluxul
+de date bazat pe \gls{mqtt}, modelul relațional al bazei de date, alegerile tehnologice
+justificate și, în final, metodologia contribuției originale — pipeline-ul de detectare
+a anomaliilor comportamentale cu algoritmul Isolation Forest.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Principii de proiectare}
+\label{sec:principii}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Arhitectura sistemului a fost concepută respectând trei principii fundamentale care
+influențează fiecare decizie tehnologică.
+
+\textbf{Local-first.} Kleppmann et al.\ definesc paradigma \emph{local-first} ca
+proiectarea în care toate datele utilizatorului sunt stocate și procesate pe dispozitivul
+sau infrastructura locală, conexiunea la cloud reprezentând o opțiune auxiliară și nu o
+cerință de funcționare~\cite{kleppmann2019localfirst}. Sistemul implementat respectă
+integral această paradigmă: senzorarea, stocarea în \gls{iot}, inferența \gls{ml} și
+controlul actuatoarelor se desfășoară exclusiv în rețeaua locală (\gls{lan}), fără niciun
+trafic spre servicii externe. Consecința directă este că sistemul continuă să funcționeze
+normal chiar dacă conexiunea la Internet este absentă.
+
+\textbf{Privacy by design.} Principiile \emph{privacy by design}, consolidate în
+Regulamentul European \gls{gdpr}~\cite{gdpr2016}, impun ca confidențialitatea să fie
+integrată în arhitectură de la etapa de proiectare, și nu adăugată ulterior. Datele de
+senzori — temperaturi, prezență, niveluri de gaz — sunt date cu caracter personal în
+sensul GDPR atunci când permit identificarea activității ocupanților. Prin stocarea
+exclusiv locală, sistemul elimină riscul de scurgere de date prin furnizori de cloud
+terți, respectând principiul minimizării transferului de date.
+
+\textbf{Edge intelligence.} Shi et al.\ propun modelul de calcul \emph{edge computing}
+ca alternativă la centralizarea în cloud, prin deplasarea puterii de calcul cât mai aproape
+de sursa datelor~\cite{shi2016edge}. În sistemul de față, motorul \gls{ml} (Isolation Forest)
+rulează pe Raspberry Pi 3B+ — dispozitivul gateway — și nu pe un server cloud, obținând
+latență de inferență de ordinul milisecundelor și independență operațională completă față
+de Internet.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Arhitectura de ansamblu}
+\label{sec:arhitectura}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Sistemul este structurat în cinci straturi ierarhice, de la hardware la interfața
+utilizator. \figref{fig:arhitectura} prezintă arhitectura de ansamblu; paragrafele
+de mai jos descriu fiecare strat.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\singlefigure]{\pics/fig-arhitectura}
+  \caption{Arhitectura de ansamblu a sistemului, organizată pe cinci straturi.
+           Toate componentele operează exclusiv în rețeaua locală, fără dependență de cloud.}
+  \label{fig:arhitectura}
+\end{figure}
+
+\textbf{Stratul 1 — Senzori și actuatori.}
+Stratul fizic cuprinde senzorii de mediu și actuatoarele conectate la nodurile ESP32.
+Senzorii măsoară: temperatura și umiditatea (2× DHT11), concentrația de gaze combustibile
+(MQ-2, ieșire analogică), nivelul de luminozitate (2× \gls{ldr}) și prezența umană (un
+singur senzor PIR, montat pe camera exterioară). Actuatoarele includ: 3 \gls{led}-uri
+de iluminat, un ventilator de 5V, un servomotor SG90 (pentru controlul draperiilor) și
+un buzzer activ pentru alerte sonore locale. Camera OV2640 (montată pe ESP32-CAM)
+furnizează flux video MJPEG.
+
+\textbf{Stratul 2 — Noduri ESP32.}
+Două plăci de dezvoltare gestionează interfața cu hardware-ul fizic:
+\begin{itemize}
+  \item \emph{Nodul interior} (ESP32 WROOM-32) execută firmware Arduino C++ și comunică
+    prin \gls{gpio}, \gls{adc} (10 biți, 0–1023) și \gls{pwm} cu toți senzorii și actuatoarele
+    de interior.
+  \item \emph{Nodul exterior} (ESP32-CAM, AI-Thinker, cu senzor de imagine OV2640) detectează
+    mișcarea prin PIR pe GPIO13 și oferă server HTTP pe portul 80 pentru streaming video
+    (\texttt{GET /stream}) și captură JPEG (\texttt{GET /capture}).
+\end{itemize}
+Ambele noduri comunică cu gateway-ul prin \gls{mqtt} peste Wi-Fi; camera este descoperită
+de aplicația mobilă prin \gls{mdns} (\texttt{smarthome-cam.local}).
+
+\textbf{Stratul 3 — Gateway Raspberry Pi.}
+Raspberry Pi 3B+ îndeplinește rolul central al sistemului. Găzduiește:
+\begin{itemize}
+  \item brokerul Mosquitto (\gls{mqtt} 1883, autentificat), care primește și rutează
+    toate mesajele publicate de noduri;
+  \item baza de date PostgreSQL cu extensia TimescaleDB, pentru stocarea eficientă
+    a seriilor temporale de citiri;
+  \item motorul \gls{ml} Python (Isolation Forest), care antrenează și rulează inferența
+    de detectare a anomaliilor direct pe dispozitivul edge.
+\end{itemize}
+
+\textbf{Stratul 4 — \gls{api} NestJS.}
+Serviciul backend, scris în TypeScript cu framework-ul NestJS, expune un \gls{api} \gls{rest}
+și un server WebSocket (Socket.IO) pe portul 3000. Comunicarea cu brokerul \gls{mqtt} se
+realizează prin modulul \texttt{mqtt.service.ts}, care abonează NestJS la topicurile
+de senzori și publică comenzi spre noduri. Autentificarea este realizată cu \gls{jwt}
+și parole \emph{hash}-uite cu bcrypt.
+
+\textbf{Stratul 5 — Aplicație mobilă.}
+Interfața utilizatorului este o aplicație React Native (Expo SDK 54, TypeScript) ce
+rulează pe Android și iOS. Primește date în timp real prin Socket.IO, afișează
+valorile senzorilor, starea alertelor și permite controlul actuatoarelor. Descoperirea
+automată a gateway-ului se face prin \gls{mdns} (\texttt{smarthome.local}).
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Cerințe funcționale și nefuncționale}
+\label{sec:cerinte}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Cerințe funcționale}
+
+Cerințele funcționale au fost identificate pornind de la scenariile de utilizare reale
+ale unui locatar. \figref{fig:usecase} prezintă diagrama use-case a sistemului.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\singlefigure]{\pics/fig-usecase}
+  \caption{Diagrama use-case a sistemului smart home. Actorul principal este utilizatorul,
+           iar motorul ML participă ca actor secundar (sistem) prin generarea automată
+           de alerte de anomalie.}
+  \label{fig:usecase}
+\end{figure}
+
+Principalele cerințe funcționale sunt:
+
+\begin{enumerate}
+  \item \textbf{Monitorizare senzori în timp real} — sistemul colectează și afișează
+    temperaturi (2 camere), umiditate (2 camere), nivel de gaz, luminozitate (2 senzori)
+    și prezență, cu actualizare la fiecare 5 secunde.
+  \item \textbf{Control actuatori de la distanță} — utilizatorul poate acționa de pe
+    telefon: LED-urile (pornit/oprit/toggle individual), ventilatorul, servomotorul
+    draperiilor (0°/90°/180°), buzzer-ul și comanda \texttt{all\_off}.
+  \item \textbf{Sistem de alerte} — alertele de tip \texttt{GAS\_DETECTED},
+    \texttt{MOTION\_NIGHT}, \texttt{ALERT\_HEAT}, \texttt{ALERT\_COLD} și
+    \texttt{ML\_ANOMALY} sunt stocate în baza de date și notificate în timp real
+    prin WebSocket.
+  \item \textbf{Vizualizare istoric} — aplicația permite consultarea istoricului
+    grafic al citirilor pe intervale configurabile.
+  \item \textbf{Flux video exterior} — aplicația afișează stream MJPEG live și
+    captură snapshot de la camera exterioară.
+  \item \textbf{Detectare anomalii comportamentale} — motorul \gls{ml} local
+    generează alerte de tip \texttt{ML\_ANOMALY} pentru comportamente neobișnuite
+    față de pattern-ul zilnic al locatarului.
+  \item \textbf{Configurare Wi-Fi (provisioning)} — nodul poate primi noile
+    credențiale Wi-Fi prin comanda \gls{mqtt} \texttt{wifi\_update} sau, ca
+    fallback, prin hotspot-ul \texttt{SmartHome-Setup}.
+\end{enumerate}
+
+\subsection{Cerințe nefuncționale}
+
+\begin{itemize}
+  \item \textbf{Disponibilitate locală} — sistemul funcționează integral fără
+    conexiune la Internet; nu există dependențe de servicii cloud externe.
+  \item \textbf{Latență redusă} — de la publicarea datelor de senzori până la
+    afișarea în aplicație, latența end-to-end vizată este sub 2 secunde.
+  \item \textbf{Confidențialitate} — nicio dată de senzori sau video nu
+    părăsește rețeaua locală.
+  \item \textbf{Extensibilitate} — arhitectura permite adăugarea de noi noduri
+    ESP32 fără modificări în backend, prin convenția de topicuri
+    \texttt{smarthome\slb{} \{nodeId\}\slb{}sensors}.
+  \item \textbf{Reziliență} — nodurile ESP32 implementează reconectare automată
+    la Wi-Fi și \gls{mqtt}; LWT asigură notificarea automată a deconectărilor.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Fluxul de date și protocolul MQTT}
+\label{sec:flux-date}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\gls{mqtt} este protocolul de transport ales pentru comunicarea dintre noduri
+și gateway. Standardul \gls{oasis} MQTT 3.1.1~\cite{oasis2019mqtt} definește un
+protocol publish/subscribe binar, cu overhead minim, potrivit pentru dispozitive
+cu resurse limitate~\cite{naik2017mqttcomparison}. Brokerul utilizat este
+Mosquitto~\cite{light2017mosquitto}, rulând cu autentificare bazată pe parolă
+pe portul 1883.
+
+\figref{fig:flux-date} prezintă fluxul complet de date din sistem.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\singlefigure]{\pics/fig-flux-date}
+  \caption{Fluxul de date în sistem. Datele de senzori circulă de la ESP32 prin
+           Mosquitto spre NestJS, care le persistă în TimescaleDB, le transmite
+           aplicației prin WebSocket și le evaluează prin motorul ML.
+           Comenzile urmează traseul invers (linie punctată).}
+  \label{fig:flux-date}
+\end{figure}
+
+\subsection{Topicuri MQTT și contractul de date}
+
+\tabref{tab:mqtt-topics} detaliază topicurile \gls{mqtt} utilizate, direcția
+fluxului, nivelul QoS și rolul fiecăruia.
+
+\begin{table}[H]
+  \centering
+  \caption{Topicurile MQTT ale sistemului smart home.}
+  \label{tab:mqtt-topics}
+  \small
+  \begin{tabular}{@{}p{4.4cm} p{2.4cm} p{1.5cm} p{4.6cm}@{}}
+    \toprule
+    \textbf{Topic} & \textbf{Direcție} & \textbf{QoS} & \textbf{Descriere} \\
+    \midrule
+    \texttt{smarthome\slb{} \{nodeId\}\slb{}sensors}
+      & ESP32 → broker
+      & 0
+      & Citiri periodice (la 5 s) în format JSON; payload conține
+        temperaturi, umiditate, gaz, luminozitate. \\
+    \addlinespace
+    \texttt{smarthome\slb{} \{nodeId\}\slb{}status}
+      & ESP32 → broker
+      & 1, retained
+      & Starea nodului: \texttt{online} la conectare,
+        \texttt{offline} prin Last Will (LWT). \\
+    \addlinespace
+    \texttt{smarthome\slb{} \{nodeId\}\slb{}commands}
+      & broker → ESP32
+      & 1
+      & Comenzi pentru actuatori: \texttt{led\_on}, \texttt{led\_off},
+        \texttt{led\_toggle}, \texttt{fan\_on}, \texttt{fan\_off},
+        \texttt{servo\_move}, \texttt{buzzer\_beep}, \texttt{all\_off},
+        \texttt{wifi\_update}. \\
+    \addlinespace
+    \texttt{smarthome/alerts}
+      & ESP32 / ML → broker
+      & 1
+      & Alerte de urgență: gaz detectat (de pe nod) sau anomalie ML
+        (de pe gateway). \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Payloadul publicat de nodul interior pe topicul de senzori este un obiect JSON
+cu câmpurile prezentate în fragmentul de mai jos (contract comun între firmware,
+backend și aplicația mobilă):
+
+\begin{lstlisting}[language=TypeScript, caption={Payload MQTT publicat de nodul interior la fiecare 5 secunde.}]
+{
+  "nodeId":       "esp32_node_a",
+  "location":     "interior",
+  "temperature":  22.5,   // DHT11 #1, living (°C)
+  "humidity":     55,     // DHT11 #1, living (%RH)
+  "temperature2": 21.8,   // DHT11 #2, dormitor (°C)
+  "humidity2":    58,     // DHT11 #2, dormitor (%RH)
+  "gasLevel":     245,    // MQ-2 ADC 0-1023
+  "gasAlert":     false,  // true dacă gasLevel > 350
+  "light1":       410,    // LDR #1 ADC 0-1023
+  "light2":       120,    // LDR #2 ADC 0-1023
+  "lightLux":     410     // alias light1 (compatibilitate)
+}
+\end{lstlisting}
+
+\subsection{Last Will and Testament și QoS}
+
+La conectare, nodul configurează mesajul \emph{Last Will and Testament} (LWT) pe topicul
+\texttt{smarthome\slb{} \{nodeId\}\slb{}status} cu payload \texttt{\{"status":"offline"\}} și flag
+\emph{retained}. Dacă conexiunea TCP se întrerupe fără deconectare explicită, brokerul
+publică automat mesajul LWT, permițând NestJS să marcheze nodul ca offline în baza
+de date și să notifice aplicația mobilă prin WebSocket.
+
+Datele de senzori se publică cu QoS~0 (fire-and-forget), acceptabil pentru telemetrie
+continuă cu cadență mare (pierderea unui pachet din 720 de zi este neglijabilă).
+Comenzile și alertele folosesc QoS~1 (cel puțin o dată), asigurând livrarea
+confirmată.
+
+\subsection{Descoperire prin mDNS și provisioning Wi-Fi}
+
+Descoperirea automată a broker-ului și a camerei utilizează \gls{mdns} (RFC 6762~\cite{rfc6762mdns}):
+ESP32 rezolvă \texttt{smarthome.local} la adresa IP curentă a Raspberry Pi, fără
+configurare manuală. Camera exterioară este disponibilă la \texttt{smarthome-cam.local}.
+
+Provisioningul Wi-Fi urmează o schemă cu fallback: credențialele curente (SSID, parolă,
+adresa broker) sunt persistate în memoria NVS (\emph{Non-Volatile Storage}) a ESP32.
+La pornire, nodul încearcă conectarea la rețeaua salvată; în caz de eșec, revine automat
+la hotspot-ul de configurare \texttt{SmartHome-Setup} (IP fix \texttt{192.168.4.1}).
+Credențialele pot fi actualizate în orice moment prin comanda \gls{mqtt}
+\texttt{wifi\_update \{ssid, password, mqtt\_host\}}, după care nodul repornește
+și se reconectează la noua rețea.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Modelul de date}
+\label{sec:model-date}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Baza de date rulează pe PostgreSQL~\cite{postgresql2024} cu extensia
+TimescaleDB~\cite{timescaledb2017}, specializată în stocarea și interogarea eficientă
+a seriilor temporale~\cite{jensen2017timeseries}. \figref{fig:er} prezintă diagrama
+entitate-relație.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\singlefigure]{\pics/fig-er}
+  \caption{Diagrama entitate-relație a bazei de date. Tabelul \texttt{sensor\_readings}
+           este hypertable TimescaleDB particionat automat pe coloana \texttt{time}.}
+  \label{fig:er}
+\end{figure}
+
+\textbf{Tabelul \texttt{sensor\_readings} (hypertable).}
+Este tabelul central al sistemului, convertit în hypertable TimescaleDB cu partiționare
+automată pe coloana \texttt{time}. Stochează fiecare citire publicată de un nod ESP32:
+
+\begin{itemize}
+  \item \texttt{time} — \texttt{TIMESTAMPTZ}, coloana de partiționare;
+  \item \texttt{node\_id}, \texttt{location} — identificatorul și locația nodului;
+  \item \texttt{temperature}, \texttt{humidity} — citirile DHT11~\#1 (living);
+  \item \texttt{temperature2}, \texttt{humidity2} — citirile DHT11~\#2 (dormitor),
+    \texttt{NULLABLE} (câmpuri absente în citiri mai vechi sau în caz de eroare senzor);
+  \item \texttt{gas\_level}, \texttt{gas\_alert} — valoarea \gls{adc} MQ-2 și indicatorul
+    de alertă;
+  \item \texttt{light1}, \texttt{light2}, \texttt{light\_lux} — valorile celor două
+    \gls{ldr}-uri și alias-ul de compatibilitate.
+\end{itemize}
+
+TimescaleDB comprimă automat chunk-urile mai vechi de 7 zile și permite interogări
+de agregare temporală cu funcții native (\texttt{time\_bucket}, \texttt{first},
+\texttt{last}) considerabil mai rapide decât PostgreSQL simplu pe seturi mari
+de date~\cite{timescaledb2017}.
+
+\textbf{Tabelul \texttt{alerts}.}
+Stochează alertele generate, cu câmpurile: \texttt{id}, \texttt{time}, \texttt{node\_id},
+\texttt{alert\_type} (unul dintre \texttt{GAS\_DETECTED}, \texttt{MOTION\_NIGHT},
+\texttt{ALERT\_HEAT}, \texttt{ALERT\_COLD}, \texttt{ML\_ANOMALY}),
+\texttt{severity}, \texttt{location}, \texttt{details} (JSON cu context),
+\texttt{acknowledged} (boolean).
+
+\textbf{Tabelul \texttt{nodes}.}
+Registrul nodurilor active: \texttt{id}, \texttt{node\_id}, \texttt{location},
+\texttt{last\_seen}, \texttt{online}, \texttt{node\_type}.
+
+\textbf{Tabelul \texttt{automation\_rules}.}
+Permite definirea de reguli de automatizare configurabile: senzor, operator,
+prag (\texttt{threshold}), interval orar (\texttt{time\_from}, \texttt{time\_to}),
+tip de acțiune (\texttt{action\_type}), stare activă.
+
+\textbf{Tabelele \texttt{users} și \texttt{ml\_models}.}
+\texttt{users} păstrează credențialele autentificate (username, \texttt{password\_hash}
+produs prin bcrypt). \texttt{ml\_models} înregistrează metadatele fiecărui model antrenat:
+versiune (formatul \texttt{vAAAAMMZZ\_HHMM}), numărul de rânduri de antrenare,
+valoarea \texttt{contamination}, lista feature-urilor și câmpul \texttt{is\_active}
+care identifică modelul curent utilizat în inferență.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Alegeri tehnologice justificate}
+\label{sec:tehnologii}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\tabref{tab:tehnologii} sintetizează principalele alegeri tehnologice și justificarea
+lor în raport cu cerințele sistemului.
+
+\begin{table}[H]
+  \centering
+  \caption{Alegeri tehnologice — cerință, soluție adoptată și justificare.}
+  \label{tab:tehnologii}
+  \begin{tabular}{@{}p{3.5cm} p{3.2cm} p{6.5cm}@{}}
+    \toprule
+    \textbf{Cerință} & \textbf{Tehnologie} & \textbf{Justificare} \\
+    \midrule
+    Microcontroler \gls{iot} cu Wi-Fi
+      & ESP32 WROOM-32~\cite{espressif2023esp32}
+      & Dual-core 240~MHz, 520~KB SRAM, Wi-Fi 802.11b/g/n integrat, suport Arduino;
+        cost redus (\textasciitilde5~USD); \gls{adc} 12-biți pe mai mulți pini. \\
+    \addlinespace
+    Transport mesaje pub/sub
+      & MQTT 3.1.1 / Mosquitto~\cite{oasis2019mqtt,light2017mosquitto}
+      & Protocol binar cu overhead minim (\textasciitilde2~B header); QoS 0–2;
+        LWT pentru detectarea deconectărilor; potrivit pentru rețele locale cu
+        lățime de bandă redusă. \\
+    \addlinespace
+    Stocare serii temporale
+      & PostgreSQL + TimescaleDB~\cite{timescaledb2017,postgresql2024}
+      & Partiționare automată (hypertable) pe timp; compresie nativă; funcții de
+        agregare temporală optimizate; interoperabilitate SQL deplină cu TypeORM. \\
+    \addlinespace
+    Backend \gls{api}
+      & NestJS + TypeScript~\cite{nestjs2024}
+      & Arhitectură modulară cu injecție de dependențe; integrare nativă WebSocket
+        (Socket.IO); TypeORM pentru acces la baza de date; suport \gls{jwt} din cutie. \\
+    \addlinespace
+    Aplicație mobilă
+      & React Native / Expo~\cite{reactnative2024,expo2024}
+      & Cod TypeScript partajat între iOS și Android; Expo SDK 54 simplifică
+        build-ul; ecosistem bogat (React Query, Zustand, Socket.IO client). \\
+    \addlinespace
+    Detectare anomalii
+      & Isolation Forest~\cite{liu2008isolation,liu2012isolationtkdd}
+      & Algoritm nesupervizat, fără etichete; complexitate de antrenare
+        $O(n \log n)$; consum de memorie redus (\textasciitilde4~MB model pkl);
+        implementare matură în scikit-learn~\cite{pedregosa2011scikit};
+        rulabil pe Raspberry Pi 3B+ fără accelerator hardware. \\
+    \addlinespace
+    Autentificare
+      & JWT + bcrypt~\cite{jones2015jwt,provos2003bcrypt}
+      & Tokenuri fără stare, ușor de validat la fiecare request \gls{rest};
+        bcrypt cu factor de cost adaptabil pentru hash-uirea parolelor. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Pipeline-ul de detectare a anomaliilor — contribuția originală}
+\label{sec:ml-pipeline}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Contribuția originală centrală a lucrării este un pipeline de detectare a anomaliilor
+comportamentale bazat pe algoritmul Isolation Forest, implementat în Python și rulând
+local pe Raspberry Pi 3B+. Spre deosebire de sistemele care transmit datele la cloud
+pentru analiză, abordarea propusă menține toate datele și calculele în rețeaua locală,
+respectând principiile de confidențialitate enunțate în \secref{sec:principii}.
+
+\figref{fig:ml-pipeline} prezintă structura completă a pipeline-ului.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\singlefigure]{\pics/fig-ml-pipeline}
+  \caption{Pipeline-ul complet al motorului ML: de la colectarea datelor din
+           TimescaleDB, prin ingineria trăsăturilor și normalizare, până la
+           antrenarea periodică a modelului Isolation Forest și inferența în timp real.
+           Bucla de reantrenare zilnică și mecanismul de cold-start sunt evidențiate.}
+  \label{fig:ml-pipeline}
+\end{figure}
+
+\subsection{Algoritmul Isolation Forest}
+
+Isolation Forest a fost propus de Liu, Ting și Zhou~\cite{liu2008isolation} și
+extins ulterior~\cite{liu2012isolationtkdd} ca algoritm de detectare a anomaliilor
+bazat pe proprietatea că punctele anomale sunt mai ușor de „izolat" prin partiționări
+aleatoare ale spațiului de trăsături față de punctele normale. Formal, un arbore
+de izolare (\emph{iTree}) partiționează recursiv un subsamplu de date prin selecție
+aleatoare a unei trăsături și a unui prag de separare. Lungimea medie a căii de la
+rădăcină până la un punct $\mathbf{x}$ în toți arborii constituie scorul de anomalie.
+
+Scorul de anomalie $s(\mathbf{x}, n)$ este definit ca:
+
+\begin{equation}
+  s(\mathbf{x}, n) = 2^{-\dfrac{E[h(\mathbf{x})]}{c(n)}},
+  \label{eq:if-score}
+\end{equation}
+
+unde $h(\mathbf{x})$ este lungimea căii parcurse de $\mathbf{x}$ în arbore, $E[\cdot]$
+este media peste toți arborii din ansamblu, $n$ este dimensiunea subsamplului de antrenare
+și $c(n) = 2H(n-1) - \tfrac{2(n-1)}{n}$ este lungimea medie a căii pentru $n$ noduri
+($H$ — număr armonic). Un scor $s \to 1$ indică o anomalie pronunțată (cale scurtă),
+iar $s \to 0$ indică un punct normal. Implementarea din scikit-learn~\cite{pedregosa2011scikit}
+returnează \texttt{score\_samples(x)} ca valori negative, cu semnatica: cu cât scorul
+este mai negativ, cu atât punctul este mai anormal.
+
+\subsection{Ingineria trăsăturilor (\texttt{features.py})}
+
+Modulul \texttt{features.py} construiește 12 trăsături numerice din citirile brute ale
+senzorilor, în ordinea fixă din \tabref{tab:features}. Ordinea este identică în
+antrenare și în inferență — orice modificare necesită reantrenare completă a modelului.
+
+\begin{table}[H]
+  \centering
+  \caption{Cele 12 trăsături ale modelului Isolation Forest, în ordinea fixă din \texttt{FEATURE\_NAMES}.}
+  \label{tab:features}
+  \begin{tabular}{@{}r l p{7.5cm}@{}}
+    \toprule
+    \textbf{\#} & \textbf{Trăsătură} & \textbf{Descriere și sursă} \\
+    \midrule
+    0  & \texttt{temperature}      & Temperatura DHT11~\#1 (living), °C. \\
+    1  & \texttt{humidity}         & Umiditatea relativă DHT11~\#1 (\%RH). \\
+    2  & \texttt{gas\_normalized}  & Valoarea ADC MQ-2 împărțită la 4095
+                                     (normalizare în $[0,1]$). \\
+    3  & \texttt{lux\_normalized}  & $\log_{1p}(\texttt{light1}) / 7{,}0$ —
+                                     luminozitate LDR~\#1 normalizată logaritmic
+                                     pe scala ADC 0–1023
+                                     ($\log_{1p}(1023) \approx 6{,}93$). \\
+    4  & \texttt{motion}           & Prezența umană detectorului PIR (0/1). \\
+    5  & \texttt{hour\_of\_day}    & Ora din zi (0–23), captează ritmul circadian. \\
+    6  & \texttt{day\_of\_week}    & Ziua săptămânii (0 = luni, 6 = duminică). \\
+    7  & \texttt{is\_weekend}      & 1 dacă ziua este sâmbătă sau duminică. \\
+    8  & \texttt{is\_night}        & 1 dacă ora $\geq 23$ sau ora $< 6$. \\
+    9  & \texttt{temp\_delta\_1h}  & Diferența de temperatură față de citirile
+                                     cu 2 eșantioane în urmă (aproximativ 10~s). \\
+    10 & \texttt{motion\_count\_10}& Suma evenimentelor de mișcare în ultimele
+                                     10 citiri (fereastră glisantă). \\
+    11 & \texttt{temp\_avg}        & Media celor doi senzori DHT11; dacă DHT11~\#2
+                                     lipsește, se folosește valoarea DHT11~\#1. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Normalizare}
+
+Înainte de antrenare, trăsăturile sunt normalizate cu \texttt{StandardScaler} din
+scikit-learn, care transformă fiecare trăsătură la medie 0 și deviație standard 1:
+\begin{equation}
+  z_i = \frac{x_i - \mu_i}{\sigma_i}.
+  \label{eq:standardscaler}
+\end{equation}
+Parametrii $\mu_i$ și $\sigma_i$ sunt calculați pe datele de antrenare și salvați în
+\texttt{scaler.pkl} alături de model. La inferență, aceeași transformare este aplicată
+fiecărei noi citiri înainte de evaluarea scorului.
+
+\subsection{Antrenarea modelului (\texttt{train.py})}
+
+Modulul \texttt{train.py} implementează ciclul de antrenare:
+
+\begin{enumerate}
+  \item Citește din tabela \texttt{sensor\_readings} toate înregistrările din
+    ultimele 30 de zile cu \texttt{gas\_alert = FALSE} (citeșterile din perioadele
+    de alertă sunt excluse pentru a nu contamina distribuția de normalitate).
+  \item Verifică pragul minim de 500 de rânduri; dacă datele sunt insuficiente,
+    antrenarea este întreruptă cu mesaj informativ.
+  \item Apelează \texttt{build\_features(df)} și normalizează cu \texttt{StandardScaler}.
+  \item Antrenează un \texttt{IsolationForest} cu parametrii:
+    \texttt{n\_estimators=100}, \texttt{contamination=0.05}, \texttt{random\_state=42},
+    \texttt{n\_jobs=-1} (toate nucleele disponibile).
+  \item Salvează \texttt{isolation\_forest.pkl} și \texttt{scaler.pkl} în directorul
+    \texttt{models/}.
+  \item Înregistrează metadatele modelului nou în tabela \texttt{ml\_models} și
+    marchează toate versiunile anterioare ca inactive.
+\end{enumerate}
+
+Parametrul \texttt{contamination=0.05} afirmă că modelul estimează că 5\% din datele
+de antrenare reprezintă comportamente atipice. Această valoare este conservatoare —
+subestimarea duce la mai puține fals-negative în faza de deploy. Reantrenarea este
+planificată zilnic la ora 03:00 prin \texttt{scheduler.py}, rulat ca serviciu systemd
+\texttt{smarthome-ml.service} pe Raspberry Pi.
+
+\subsection{Inferența în timp real (\texttt{infer.py})}
+
+Clasa \texttt{AnomalyDetector} din \texttt{infer.py} este instanțiată la pornirea
+serviciului NestJS și menținută în memorie. La fiecare citire nouă de senzori:
+
+\begin{enumerate}
+  \item Se construiește un DataFrame cu o singură linie din payload-ul JSON primit.
+  \item Se aplică \texttt{build\_features} și \texttt{scaler.transform}.
+  \item Se apelează \texttt{model.score\_samples(X\_scaled)}, care returnează un scalar
+    real; notăm scorul ca $s \in \mathbb{R}$.
+  \item Dacă $s < \tau$ (unde $\tau = -0{,}1$ este pragul \texttt{ANOMALY\_THRESHOLD}),
+    citirea este clasificată drept anomalie și se creează o alertă de tip
+    \texttt{ML\_ANOMALY} în baza de date, notificată imediat aplicației prin WebSocket.
+\end{enumerate}
+
+Metoda returnează un obiect cu câmpurile \texttt{is\_anomaly} (boolean), \texttt{score}
+(valoare numerică), \texttt{threshold} și \texttt{model\_active}. Dacă fișierele
+\texttt{.pkl} nu există, câmpul \texttt{model\_active} este \texttt{false} și
+nicio alertă ML nu este generată.
+
+\subsection{Mecanismul de cold-start}
+
+În primele aproximativ 14 zile de funcționare a sistemului, nu există suficiente date
+pentru a antrena modelul (minimul de 500 de rânduri echivalând cu circa 42 de minute
+de date, dar o fereastră de 30 de zile este necesară pentru a surprinde variabilitatea
+comportamentală zilnică și săptămânală). În această perioadă de cold-start, motorul
+ML returnează \texttt{model\_active: false} și sistemul se bazează pe reguli de prag
+hardcodate pentru generarea alertelor:
+
+\begin{itemize}
+  \item \texttt{gas\_level > 300} → alertă \texttt{GAS\_DETECTED};
+  \item \texttt{temperature > 35°C} → alertă \texttt{ALERT\_HEAT};
+  \item \texttt{temperature < 5°C} → alertă \texttt{ALERT\_COLD};
+  \item mișcare detectată în intervalul 23:00–06:00 → alertă \texttt{MOTION\_NIGHT}.
+\end{itemize}
+
+Această strategie asigură că sistemul oferă protecție de bază chiar înainte ca modelul
+\gls{ml} să fie disponibil.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Considerații de securitate}
+\label{sec:securitate}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Modelul de securitate al sistemului este construit pe trei niveluri complementare.
+
+\textbf{Autentificare și autorizare.}
+Accesul la \gls{api}-ul \gls{rest} și la conexiunile WebSocket este protejat prin
+\gls{jwt}~\cite{jones2015jwt}. La autentificarea reușită, serverul emite un token semnat
+cu o cheie secretă; toate request-urile ulterioare trebuie să includă tokenul în header-ul
+\texttt{Authorization: Bearer <token>}. Parolele utilizatorilor sunt stocate exclusiv
+ca hash-uri bcrypt~\cite{provos2003bcrypt} cu factor de cost adaptabil (implicit 10
+runde), eliminând riscul expunerii parolelor în clar chiar în cazul unui acces
+neautorizat la baza de date.
+
+\textbf{Autentificare broker MQTT.}
+Brokerul Mosquitto este configurat cu autentificare prin user/parolă (utilizatorul
+\texttt{smarthome}, credențiale stocate în fișierul Mosquitto \texttt{passwd}),
+permițând conectarea doar nodurilor și serviciilor cunoscute. Comunicarea se
+desfășoară în rețeaua locală și nu este expusă direct la Internet.
+
+\textbf{Izolare în rețeaua locală.}
+Nicio componentă a sistemului nu expune porturi pe Internet. Gateway-ul Raspberry Pi,
+nodurile ESP32 și aplicația mobilă comunică exclusiv în \gls{lan}. Această izolare
+reprezintă o măsură de securitate perimetrală complementară celor aplicative,
+conformă cu principiul \emph{privacy by design} din \gls{gdpr}~\cite{gdpr2016}.
+Datele cu caracter personal (activitate comportamentală, prezență umană) nu
+părăsesc niciodată rețeaua locală, eliminând riscurile asociate transferului
+transfrontalier de date sau breșelor de securitate la nivel de furnizor cloud.
+
+\textbf{Minimizarea suprafeței de atac.}
+Firmware-ul ESP32 nu expune nicio interfață HTTP sau Telnet în mod normal de funcționare;
+singurul vector de comunicare externă este conexiunea \gls{mqtt} autentificată.
+ESP32-CAM expune server HTTP pe portul 80 exclusiv în rețeaua locală, accesul nefiind
+publicat prin NAT sau port-forwarding.

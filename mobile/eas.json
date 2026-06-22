@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 10.0.0"
+    "version": ">= 10.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -14,7 +15,7 @@
       "distribution": "internal",
       "ios": {
         "simulator": false,
-        "image": "macos-sequoia-15.4-xcode-16.3"
+        "image": "macos-sequoia-15.6-xcode-26.2"
       },
       "env": {
         "EXPO_PUBLIC_API_HOST": "http://smarthome.local:3000"
@@ -24,7 +25,7 @@
       "distribution": "store",
       "ios": {
         "autoIncrement": true,
-        "image": "macos-sequoia-15.4-xcode-16.3"
+        "image": "macos-sequoia-15.6-xcode-26.2"
       },
       "env": {
         "EXPO_PUBLIC_API_HOST": "http://smarthome.local:3000"

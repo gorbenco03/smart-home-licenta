@@ -1,143 +1,231 @@
 /*
  * Smart Home — Firmware nodul interior (ESP32 WROOM-32)
- * ─────────────────────────────────────────────────────────────
- * Un singur nod acoperă interiorul casei:
- *   Bucătărie: MQ-2 (gaz) + buzzer (alarmă)
- *   Living:    DHT11 (temp/umid), BH1750 (lux), servo perdele,
- *              releu 0 = lumină living
- *   Dormitor:  releu 1 = lumină dormitor
+ * ═══════════════════════════════════════════════════════════════
+ * Hardware real — pinout complet (CONFIRMAT pe breadboard):
  *
- * Senzori:   DHT11/DHT22 (GPIO4), MQ-2 (GPIO34 analog),
- *            BH1750 lux (I2C: SDA=21, SCL=22), PIR opțional (GPIO27)
- * Actuatori: relee (GPIO26=living, GPIO25=dormitor, 33/32 libere),
- *            buzzer (GPIO5), servo SG90 (GPIO18)
+ *   Senzori:
+ *     DHT11 #1 (living)   GPIO4   — digital, modul cu pull-up, alim. 3.3V
+ *     DHT11 #2 (dormitor) GPIO23  — digital, modul cu pull-up, alim. 3.3V
+ *     MQ-2 (A0 analog)    GPIO34  — ADC1, input-only, divizor 2x10k, alim. 5V
+ *     LDR #1 (living)     GPIO35  — ADC1, input-only, divizor cu 10k, 3.3V
+ *     LDR #2 (dormitor)   GPIO36  — ADC1 (VP), input-only, divizor cu 10k, 3.3V
+ *     PIR (miscare/curte) GPIO14  — iesire 3.3V, alim. 5V extern
  *
- * Sketch-ul rămâne configurabil: pentru un al doilea nod identic
- * schimbă doar secțiunea CONFIG NOD (NODE_ID, LOCATION, HAS_SERVO).
+ *   Actuatori:
+ *     LED #0 (living)     GPIO25  — iesire digitala
+ *     LED #1 (dormitor)   GPIO26  — iesire digitala
+ *     LED #2 (baie)       GPIO33  — iesire digitala
+ *     LED exterior (curte)GPIO32  — AUTOMAT la miscare (PIR)
+ *     Buzzer PASIV        GPIO13  — necesita tone() (semnal cu frecventa)
+ *     Servo SG90 (jaluzele)GPIO18 — PWM 50Hz, alim. 5V extern
+ *     Ventilator (releu)  GPIO19  — modul releu ACTIVE-LOW, alim. 5V extern
  *
- * Librării (Arduino IDE → Library Manager):
+ *   Releu ventilator (IMPORTANT):
+ *     Modul active-LOW alimentat la 5V, comandat de la 3.3V. Pentru a se opri
+ *     COMPLET nu fortam pinul la 3.3V, ci il lasam in INPUT (pull-up modul -> 5V).
+ *     PORNIT  = pinMode OUTPUT + digitalWrite LOW (0V).
+ *     OPRIT   = pinMode INPUT  (pinul "pluteste", modulul il ridica la 5V).
+ *     Putere: (+)sursa->COM, NO->(+)ventilator, (-)ventilator->(-)sursa(GND comun).
+ *
+ *   Toate alimentarile de 5V (MQ2, PIR, servo, releu) vin din SURSA EXTERNA,
+ *   cu masa comuna cu ESP32. ESP32 alimenteaza doar 3.3V (DHT, LDR).
+ *
+ * Librarii necesare (Arduino IDE -> Library Manager):
  *   - DHT sensor library (Adafruit) + Adafruit Unified Sensor
- *   - BH1750 (Christopher Laws)
+ *   - ESP32Servo (Kevin Harrington)
  *   - PubSubClient (Nick O'Leary)
- *   - ArduinoJson (Benoit Blanchon)
- *   - ESP32Servo (Kevin Harrington)  — doar pentru Nodul A
+ *   - ArduinoJson (Benoit Blanchon) >= v6
  *
- * Protocol MQTT (vezi docs/06_ghid_conexiuni_software.md):
- *   publish   smarthome/{NODE_ID}/sensors   — citiri la 5s, JSON flat
- *   publish   smarthome/{NODE_ID}/status    — online/offline (LWT)
- *   publish   smarthome/alerts              — alertă gaz (prag depășit)
- *   subscribe smarthome/{NODE_ID}/commands  — relee, buzzer, servo, wifi_update
+ * Protocol MQTT (broker Mosquitto pe Raspberry Pi):
+ *   publish   smarthome/esp32_node_a/sensors   — citiri la 5s, JSON flat
+ *   publish   smarthome/esp32_node_a/status    — online/offline (LWT)
+ *   publish   smarthome/alerts                 — alerta gaz / miscare
+ *   subscribe smarthome/esp32_node_a/commands  — LED, ventilator, servo, buzzer, wifi
+ *
+ * Proiect licenta — Universitatea Politehnica Timisoara, 2026.
  */
 
 #include <WiFi.h>
 #include <ESPmDNS.h>
-#include <Wire.h>
 #include <PubSubClient.h>
 #include <DHT.h>
-#include <BH1750.h>
+#include <ESP32Servo.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
 
-/* ══ CONFIG NOD — singura secțiune de modificat între noduri ══ */
-#define NODE_ID    "esp32_node_a"
-#define LOCATION   "interior"
-#define HAS_SERVO  1
-/* ═════════════════════════════════════════════════════════════ */
+/* ══ CONFIG NOD ═══════════════════════════════════════════════ */
+#define NODE_ID   "esp32_node_a"
+#define LOCATION  "interior"
+/* ════════════════════════════════════════════════════════════= */
 
-#if HAS_SERVO
-#include <ESP32Servo.h>
-#endif
-
-// ── WiFi provisioning (hotspot RPi ca fallback) ───────────
+// ── WiFi provisioning ────────────────────────────────────────
 #define DEFAULT_WIFI_SSID  "SmartHome-Setup"
 #define DEFAULT_WIFI_PASS  "smarthome2026"
 #define DEFAULT_MQTT_HOST  "192.168.4.1"
 
-#define MQTT_PORT          1883
-#define MQTT_USER          "smarthome"
-#define MQTT_PASS          "smarthome_mqtt_2026"
+// Fallback final: reteaua de acasa unde RPi e deja conectat (pentru test).
+// Brokerul se gaseste prin mDNS (smarthome.local) pe aceasta retea.
+#define FALLBACK_WIFI_SSID  "Orange-ADXPcy-2G"
+#define FALLBACK_WIFI_PASS  "TtYbS9S24chukKxKEK"   // parola retelei (NU urca pe GitHub)
+#define FALLBACK_MQTT_HOST  "smarthome.local"
 
-// ── Pini (conform docs/hardware_breadboard_guide.md) ──────
-#define DHT_PIN     4
-#define DHT_TYPE    DHT11        // schimbă în DHT22 dacă ai AM2302
-#define MQ2_PIN     34           // ieșirea analogică A0
-#define PIR_PIN     27
-#define BUZZER_PIN  5
-#define SERVO_PIN   18
-const int RELAY_PINS[4] = { 26, 25, 33, 32 };
+#define MQTT_PORT  1883
+#define MQTT_USER  "smarthome"
+#define MQTT_PASS  "smarthome_mqtt_2026"
 
-// Modulele uzuale de relee pe 4 canale sunt active-LOW
-#define RELAY_ACTIVE_LOW   true
+// ── Pini senzori ─────────────────────────────────────────────
+#define DHT1_PIN   4    // DHT11 #1 — living
+#define DHT1_TYPE  DHT11
+#define DHT2_PIN   23   // DHT11 #2 — dormitor
+#define DHT2_TYPE  DHT11
+#define MQ2_PIN    34   // ADC1 — analogRead 0–1023
+#define LDR1_PIN   35   // ADC1 — analogRead 0–1023
+#define LDR2_PIN   36   // ADC1 (VP) — analogRead 0–1023
+#define PIR_PIN    14   // intrare digitala — miscare
 
-// ── Praguri și intervale ──────────────────────────────────
-#define GAS_THRESHOLD      350      // ADC 0–1023; >prag → alertă
-#define PUBLISH_INTERVAL   5000     // ms între citiri
+// ── Pini actuatori ───────────────────────────────────────────
+const int LED_PINS[3] = { 25, 26, 33 };   // LED #0 living, #1 dormitor, #2 baie
+#define LED_OUT_PIN 32   // LED exterior (curte) — automat la miscare
+#define BUZZER_PIN  13   // buzzer PASIV — folosim tone()
+#define BUZZER_FREQ 3000 // Hz — frecventa tonului (buzzer pasiv suna tare ~3kHz)
+#define SERVO_PIN   18   // servo jaluzele
+#define FAN_PIN     19   // releu ventilator (ACTIVE-LOW, truc INPUT pt. oprire)
 
-// ── Obiecte globale ───────────────────────────────────────
-DHT dht(DHT_PIN, DHT_TYPE);
-BH1750 lightMeter;
+// ── Intervale ────────────────────────────────────────────────
+#define PUBLISH_INTERVAL  5000   // ms între publicări senzori
+
+/*
+ * MQ-2 — calibrare automata de baseline + alerta pe delta:
+ *   Dupa warm-up (~60s) masuram baseline-ul in aer curat. Alerta se declanseaza
+ *   cand gazul depaseste (baseline + GAS_MARGIN). Baseline-ul se adapteaza lent
+ *   (EMA) la driftul senzorului cat timp aerul e curat. Asa pragul nu depinde de
+ *   valoarea absoluta (la fiecare senzor difera).
+ */
+#define GAS_WARMUP_MS  60000   // 60s pana incepem calibrarea
+#define GAS_MARGIN     150     // cat peste baseline = alerta
+
+/*
+ * Control ventilator — manual + automat cu prag configurabil din app:
+ *   AUTO (implicit): peste fanThreshold °C porneste, sub (prag-histerezis) opreste.
+ *   MANUAL: fan_on/fan_off forteaza starea pana la fan_auto.
+ */
+#define FAN_THRESHOLD_DEFAULT  28.0f
+#define FAN_HYSTERESIS          2.0f
+
+// ── PIR — ignora primele secunde (calibrare senzor) ──────────
+#define PIR_WARMUP_MS  60000
+
+// ── Obiecte globale ───────────────────────────────────────────
+DHT dht1(DHT1_PIN, DHT1_TYPE);
+DHT dht2(DHT2_PIN, DHT2_TYPE);
+Servo servoJaluzele;
 WiFiClient wifiClient;
 PubSubClient mqtt(wifiClient);
 Preferences prefs;
-#if HAS_SERVO
-Servo servo;
-#endif
 
 String wifiSsid, wifiPass, mqttHost;
 unsigned long lastPublish = 0;
-bool gasAlertActive = false;     // pentru alertă doar pe frontul crescător
-bool relayState[4]  = { false, false, false, false };
-bool bh1750Ok       = false;
+unsigned long bootMillis   = 0;
 
-/* ─── NVS: credențiale persistente ───────────────────────── */
+bool  ledState[3] = { false, false, false };
+bool  fanState    = false;
+bool  fanAuto     = true;
+float fanThreshold = FAN_THRESHOLD_DEFAULT;
+
+int   gasBaseline   = -1;       // -1 = necalibrat înca
+bool  gasAlertActive = false;
+
+bool  motionState       = false;
+bool  motionAlertActive = false;
+bool  motionArmed       = false;   // armat din telefon (mod alarma miscare)
+
+/* ─── NVS: credentiale + config ventilator ───────────────── */
 void loadCredentials() {
   prefs.begin("smarthome", false);
   wifiSsid = prefs.getString("wifi_ssid", DEFAULT_WIFI_SSID);
   wifiPass = prefs.getString("wifi_pass", DEFAULT_WIFI_PASS);
   mqttHost = prefs.getString("mqtt_host", DEFAULT_MQTT_HOST);
+  fanAuto      = prefs.getBool("fan_auto", true);
+  fanThreshold = prefs.getFloat("fan_thr", FAN_THRESHOLD_DEFAULT);
+  motionArmed  = prefs.getBool("motion_arm", false);
   prefs.end();
-  Serial.printf("[Config] WiFi: %s | MQTT: %s\n", wifiSsid.c_str(), mqttHost.c_str());
+  Serial.printf("[Config] WiFi: %s | MQTT: %s | Fan: %s @ %.1f C\n",
+                wifiSsid.c_str(), mqttHost.c_str(),
+                fanAuto ? "AUTO" : "MANUAL", fanThreshold);
 }
 
-void saveCredentials(const String& ssid, const String& pass, const String& host) {
+void saveFanConfig() {
+  prefs.begin("smarthome", false);
+  prefs.putBool("fan_auto", fanAuto);
+  prefs.putFloat("fan_thr", fanThreshold);
+  prefs.end();
+}
+
+void saveMotionConfig() {
+  prefs.begin("smarthome", false);
+  prefs.putBool("motion_arm", motionArmed);
+  prefs.end();
+}
+
+void saveCredentials(const String& ssid, const String& pass,
+                     const String& host) {
   prefs.begin("smarthome", false);
   prefs.putString("wifi_ssid", ssid);
   prefs.putString("wifi_pass", pass);
   prefs.putString("mqtt_host", host);
   prefs.end();
-  Serial.println("[Config] Credențiale salvate în NVS");
+  Serial.println("[Config] Credentiale salvate in NVS");
 }
 
-/* ─── WiFi: rețeaua salvată, apoi fallback pe hotspot ─────── */
-void connectWifi() {
-  Serial.printf("[WiFi] Conectare la %s...\n", wifiSsid.c_str());
-  WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+/* ─── WiFi: incearca o retea cu timeout ───────────────────── */
+bool tryWifi(const char* ssid, const char* pass, int maxAttempts) {
+  Serial.printf("[WiFi] Incerc \"%s\"...", ssid);
+  WiFi.disconnect();
+  WiFi.begin(ssid, pass);
+  int a = 0;
+  while (WiFi.status() != WL_CONNECTED && a < maxAttempts) {
+    delay(500); Serial.print("."); a++;
+  }
+  bool ok = (WiFi.status() == WL_CONNECTED);
+  Serial.println(ok ? " OK" : " esuat");
+  return ok;
+}
 
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500); Serial.print("."); attempts++;
+/* ─── WiFi: 3 niveluri (salvata -> hotspot RPi -> retea acasa) ─ */
+void connectWifi() {
+  // 1) Reteaua salvata in NVS (configurata din app prin wifi_update)
+  if (tryWifi(wifiSsid.c_str(), wifiPass.c_str(), 20)) {
+    Serial.printf("[WiFi] Conectat (salvata)! IP: %s\n",
+                  WiFi.localIP().toString().c_str());
+    return;
   }
 
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("\n[WiFi] Eșec — revin la hotspotul de setup");
+  // 2) Hotspotul de setup ridicat de Raspberry Pi (provisioning prin MQTT)
+  if (tryWifi(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS, 20)) {
     wifiSsid = DEFAULT_WIFI_SSID;
     wifiPass = DEFAULT_WIFI_PASS;
     mqttHost = DEFAULT_MQTT_HOST;
-    WiFi.begin(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS);
-    attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 60) {
-      delay(500); Serial.print("."); attempts++;
-    }
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("\n[WiFi] Nici hotspotul nu răspunde — restart în 5s");
-      delay(5000);
-      ESP.restart();
-    }
+    Serial.printf("[WiFi] Conectat (setup RPi)! IP: %s\n",
+                  WiFi.localIP().toString().c_str());
+    return;
   }
-  Serial.printf("\n[WiFi] Conectat! IP: %s\n", WiFi.localIP().toString().c_str());
+
+  // 3) Fallback: reteaua de acasa unde RPi e deja conectat (test direct)
+  if (tryWifi(FALLBACK_WIFI_SSID, FALLBACK_WIFI_PASS, 30)) {
+    wifiSsid = FALLBACK_WIFI_SSID;
+    wifiPass = FALLBACK_WIFI_PASS;
+    mqttHost = FALLBACK_MQTT_HOST;   // gasit prin mDNS smarthome.local
+    Serial.printf("[WiFi] Conectat (fallback acasa)! IP: %s\n",
+                  WiFi.localIP().toString().c_str());
+    return;
+  }
+
+  Serial.println("[WiFi] Nicio retea disponibila — restart in 5s");
+  delay(5000);
+  ESP.restart();
 }
 
-/* ─── mDNS: smarthome.local → IP (RPi pe rețele noi) ──────── */
+/* ─── mDNS: smarthome.local → IP-ul Raspberry Pi ──────────── */
 String resolveMqttHost() {
   if (!mqttHost.endsWith(".local")) return mqttHost;
 
@@ -150,69 +238,136 @@ String resolveMqttHost() {
   for (int i = 0; i < 5; i++) {
     IPAddress ip = MDNS.queryHost(name.c_str(), 3000);
     if (ip != IPAddress(0, 0, 0, 0)) {
-      Serial.printf("[mDNS] %s → %s\n", mqttHost.c_str(), ip.toString().c_str());
+      Serial.printf("[mDNS] %s -> %s\n",
+                    mqttHost.c_str(), ip.toString().c_str());
       return ip.toString();
     }
     delay(2000);
   }
-  Serial.println("[mDNS] Eșec — folosesc IP-ul default");
+  Serial.println("[mDNS] Esec — folosesc IP-ul default");
   return DEFAULT_MQTT_HOST;
 }
 
 /* ─── Actuatori ───────────────────────────────────────────── */
-void setRelay(int index, bool on) {
-  if (index < 0 || index > 3) return;
-  relayState[index] = on;
-  bool level = RELAY_ACTIVE_LOW ? !on : on;
-  digitalWrite(RELAY_PINS[index], level ? HIGH : LOW);
-  Serial.printf("[Releu %d] %s\n", index, on ? "PORNIT" : "OPRIT");
+
+// LED de camera (index 0–2)
+void setLed(int index, bool on) {
+  if (index < 0 || index > 2) return;
+  ledState[index] = on;
+  digitalWrite(LED_PINS[index], on ? HIGH : LOW);
+  Serial.printf("[LED %d] %s\n", index, on ? "PORNIT" : "OPRIT");
 }
 
+// Ventilator prin releu ACTIVE-LOW (truc INPUT pentru oprire completa)
+void setFan(bool on) {
+  fanState = on;
+  if (on) {
+    pinMode(FAN_PIN, OUTPUT);
+    digitalWrite(FAN_PIN, LOW);   // 0V curat -> releu activat
+  } else {
+    pinMode(FAN_PIN, INPUT);      // liber -> pull-up modul (5V) -> oprit complet
+  }
+  Serial.printf("[Ventilator] %s\n", on ? "PORNIT" : "OPRIT");
+}
+
+// Buzzer pasiv — N bip-uri cu tone()
 void beep(int count) {
   for (int i = 0; i < count; i++) {
-    digitalWrite(BUZZER_PIN, HIGH); delay(200);
-    digitalWrite(BUZZER_PIN, LOW);  delay(150);
+    tone(BUZZER_PIN, BUZZER_FREQ); delay(180);
+    noTone(BUZZER_PIN);            delay(120);
   }
 }
 
-/* ─── Comenzi MQTT de la server ───────────────────────────── */
+// Sirena scurta (alarma) — alterneaza 2 frecvente
+void siren(int cycles) {
+  for (int i = 0; i < cycles; i++) {
+    tone(BUZZER_PIN, 2200); delay(150);
+    tone(BUZZER_PIN, 3500); delay(150);
+  }
+  noTone(BUZZER_PIN);
+}
+
+/* ─── Comenzi MQTT primite de la server ───────────────────── */
 void onMessage(char* topic, byte* payload, unsigned int length) {
   String msg;
+  msg.reserve(length);
   for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
-  Serial.printf("[MQTT] Comandă: %s\n", msg.c_str());
+  Serial.printf("[MQTT] Comanda: %s\n", msg.c_str());
 
   StaticJsonDocument<256> doc;
-  if (deserializeJson(doc, msg)) return;
+  if (deserializeJson(doc, msg)) {
+    Serial.println("[MQTT] JSON invalid — ignorat");
+    return;
+  }
   String action = doc["action"] | "";
 
-  if (action == "relay_on")     setRelay(doc["relay"] | -1, true);
-  else if (action == "relay_off")    setRelay(doc["relay"] | -1, false);
-  else if (action == "relay_toggle") {
-    int r = doc["relay"] | -1;
-    if (r >= 0 && r <= 3) setRelay(r, !relayState[r]);
+  if (action == "led_on") {
+    setLed(doc["led"] | -1, true);
   }
-  else if (action == "buzzer_beep")  beep(doc["count"] | 1);
-  else if (action == "all_off") {
-    for (int i = 0; i < 4; i++) setRelay(i, false);
+  else if (action == "led_off") {
+    setLed(doc["led"] | -1, false);
   }
-#if HAS_SERVO
+  else if (action == "led_toggle") {
+    int idx = doc["led"] | -1;
+    if (idx >= 0 && idx <= 2) setLed(idx, !ledState[idx]);
+  }
+  else if (action == "fan_on") {
+    fanAuto = false; setFan(true); saveFanConfig();
+  }
+  else if (action == "fan_off") {
+    fanAuto = false; setFan(false); saveFanConfig();
+  }
+  else if (action == "fan_auto") {
+    fanAuto = true; saveFanConfig();
+    Serial.println("[Fan] Mod AUTO");
+  }
+  else if (action == "fan_threshold") {
+    float t = (float)(doc["value"] | (double)FAN_THRESHOLD_DEFAULT);
+    fanThreshold = constrain(t, 10.0f, 40.0f);
+    saveFanConfig();
+    Serial.printf("[Fan] Prag automat: %.1f C\n", fanThreshold);
+  }
+  else if (action == "motion_arm") {
+    motionArmed = true; saveMotionConfig();
+    Serial.println("[PIR] ARMAT (detectie miscare pornita)");
+  }
+  else if (action == "motion_disarm") {
+    motionArmed = false; saveMotionConfig();
+    digitalWrite(LED_OUT_PIN, LOW);   // stinge becul exterior daca era aprins
+    motionState = false; motionAlertActive = false;
+    Serial.println("[PIR] DEZARMAT (detectie miscare oprita)");
+  }
   else if (action == "servo_move") {
-    int angle = doc["servoAngle"] | 0;
-    angle = constrain(angle, 0, 180);
-    servo.write(angle);
-    Serial.printf("[Servo] %d°\n", angle);
+    int angle = constrain((int)(doc["servoAngle"] | 0), 0, 180);
+    servoJaluzele.write(angle);
+    Serial.printf("[Servo] %d grade\n", angle);
   }
-#endif
+  else if (action == "buzzer_beep") {
+    beep(doc["count"] | 1);
+  }
+  else if (action == "all_off") {
+    for (int i = 0; i < 3; i++) setLed(i, false);
+    digitalWrite(LED_OUT_PIN, LOW);
+    fanAuto = false; setFan(false); saveFanConfig();
+    servoJaluzele.write(0);
+    Serial.println("[all_off] Toate actuatoarele oprite");
+  }
   else if (action == "wifi_update") {
-    String newSsid = doc["ssid"] | "";
-    String newPass = doc["password"] | "";
+    String newSsid = doc["ssid"]      | "";
+    String newPass = doc["password"]  | "";
     String newHost = doc["mqtt_host"] | "";
-    if (newSsid.isEmpty()) return;
+    if (newSsid.isEmpty()) {
+      Serial.println("[Setup] wifi_update fara SSID — ignorat");
+      return;
+    }
     if (newHost.isEmpty()) newHost = "smarthome.local";
-    Serial.printf("[Setup] WiFi nou: %s → restart în 3s\n", newSsid.c_str());
+    Serial.printf("[Setup] WiFi nou: %s -> restart in 3s\n", newSsid.c_str());
     saveCredentials(newSsid, newPass, newHost);
     delay(3000);
     ESP.restart();
+  }
+  else {
+    Serial.printf("[MQTT] Actiune necunoscuta: %s\n", action.c_str());
   }
 }
 
@@ -244,9 +399,9 @@ void connectMqtt() {
       mqtt.publish("smarthome/" NODE_ID "/status", stMsg, true);
       return;
     }
-    Serial.printf(" Eroare: %d — reîncerc în 3s\n", mqtt.state());
+    Serial.printf(" Eroare: %d — reincerc in 3s\n", mqtt.state());
     if (++attempts >= 10) {
-      Serial.println("[MQTT] Broker negăsit după 10 încercări — restart");
+      Serial.println("[MQTT] Broker negasit dupa 10 incercari — restart");
       delay(1000);
       ESP.restart();
     }
@@ -254,96 +409,208 @@ void connectMqtt() {
   }
 }
 
-/* ─── Alertă gaz către server (doar pe frontul crescător) ─── */
-void publishGasAlert(int level) {
+/* ─── Citire ADC mediata (reduce zgomotul) ────────────────── */
+int readAvg(int pin, int samples) {
+  long sum = 0;
+  for (int i = 0; i < samples; i++) { sum += analogRead(pin); delay(2); }
+  return (int)(sum / samples);
+}
+
+/* ─── Alerta gaz (front crescator) ────────────────────────── */
+void publishGasAlert(int level, int prag) {
   StaticJsonDocument<192> doc;
   doc["node_id"]    = NODE_ID;
   doc["alert_type"] = "GAS_DETECTED";
   doc["location"]   = LOCATION;
   JsonObject d = doc.createNestedObject("details");
   d["nivel"] = level;
-  d["prag"]  = GAS_THRESHOLD;
+  d["prag"]  = prag;
   char payload[192];
   serializeJson(doc, payload);
   mqtt.publish("smarthome/alerts", payload, false);
-  Serial.printf("[ALERTĂ] Gaz %d > %d — trimisă la server\n", level, GAS_THRESHOLD);
+  Serial.printf("[ALERTA] Gaz %d > %d — trimisa la server\n", level, prag);
 }
 
-/* ─── Citire + publicare senzori ──────────────────────────── */
-void publishSensors() {
-  float temp  = dht.readTemperature();
-  float humid = dht.readHumidity();
-  int   gas   = analogRead(MQ2_PIN);          // 0–1023 (rezoluție setată în setup)
-  bool  motion = digitalRead(PIR_PIN) == HIGH;
-  float lux   = bh1750Ok ? lightMeter.readLightLevel() : -1;
+/* ─── Alerta miscare (front crescator) ────────────────────── */
+void publishMotionAlert() {
+  StaticJsonDocument<160> doc;
+  doc["node_id"]    = NODE_ID;
+  doc["alert_type"] = "MOTION_DETECTED";
+  doc["location"]   = "curte";
+  char payload[160];
+  serializeJson(doc, payload);
+  mqtt.publish("smarthome/alerts", payload, false);
+  Serial.println("[ALERTA] Miscare detectata — trimisa la server");
+}
 
-  if (isnan(temp) || isnan(humid)) {
-    Serial.println("[DHT] Eroare citire — sar peste publicare");
+/* ─── PIR: bec exterior + alarma + alerta (rulat des in loop) ─ */
+void handleMotion() {
+  // Dezarmat din telefon -> nu detectam nimic
+  if (!motionArmed) return;
+
+  // Ignora primele secunde (PIR-ul se calibreaza)
+  if (millis() - bootMillis < PIR_WARMUP_MS) return;
+
+  bool m = (digitalRead(PIR_PIN) == HIGH);
+
+  if (m && !motionState) {            // front crescator
+    digitalWrite(LED_OUT_PIN, HIGH);  // becul de afara
+    beep(1);                          // bip scurt de avertizare
+    if (mqtt.connected() && !motionAlertActive) publishMotionAlert();
+    motionAlertActive = true;
+    Serial.println("[PIR] Miscare!");
+  } else if (!m && motionState) {     // front descrescator
+    digitalWrite(LED_OUT_PIN, LOW);
+    motionAlertActive = false;
+  }
+  motionState = m;
+}
+
+/* ─── Citire senzori si publicare MQTT ────────────────────── */
+void publishSensors() {
+  float temp1  = dht1.readTemperature();
+  float humid1 = dht1.readHumidity();
+  float temp2  = dht2.readTemperature();
+  float humid2 = dht2.readHumidity();
+
+  bool dht1ok = !isnan(temp1) && !isnan(humid1);
+  bool dht2ok = !isnan(temp2) && !isnan(humid2);
+
+  if (!dht1ok && !dht2ok) {
+    Serial.println("[DHT] Ambii senzori in eroare — sar publicarea");
     return;
   }
 
-  bool gasAlert = gas > GAS_THRESHOLD;
-  if (gasAlert && !gasAlertActive) {          // front crescător
-    publishGasAlert(gas);
-    beep(3);                                  // semnal sonor local imediat
+  // MQ-2 + LDR (ADC1, 10 biti), mediate
+  int gas    = readAvg(MQ2_PIN, 5);
+  int light1 = readAvg(LDR1_PIN, 3);
+  int light2 = readAvg(LDR2_PIN, 3);
+
+  // Calibrare automata baseline gaz dupa warm-up
+  if (gasBaseline < 0 && millis() - bootMillis > GAS_WARMUP_MS) {
+    gasBaseline = gas;
+    Serial.printf("[MQ2] Baseline calibrat: %d (prag alerta = %d)\n",
+                  gasBaseline, gasBaseline + GAS_MARGIN);
   }
-  gasAlertActive = gasAlert;
 
-  StaticJsonDocument<256> doc;
-  doc["nodeId"]      = NODE_ID;
-  doc["location"]    = LOCATION;
-  doc["temperature"] = round(temp * 10.0) / 10.0;
-  doc["humidity"]    = round(humid * 10.0) / 10.0;
-  doc["gasLevel"]    = gas;
-  doc["gasAlert"]    = gasAlert;
-  doc["motion"]      = motion;
-  if (lux >= 0) doc["lightLux"] = round(lux);
+  bool gasAlert = false;
+  if (gasBaseline >= 0) {
+    int prag = gasBaseline + GAS_MARGIN;
+    gasAlert = (gas > prag);
+    if (gasAlert && !gasAlertActive) {
+      publishGasAlert(gas, prag);
+      siren(3);                       // alarma sonora locala imediata
+    }
+    gasAlertActive = gasAlert;
+    // Adaptare lenta a baseline-ului cat timp aerul e curat (drift senzor)
+    if (!gasAlert && gas < gasBaseline + GAS_MARGIN / 2)
+      gasBaseline = (int)(gasBaseline * 0.98f + gas * 0.02f);
+  }
 
-  char payload[256];
+  // Control automat ventilator (mod AUTO) — prag setabil din app
+  if (fanAuto) {
+    float tempAvg = dht1ok && dht2ok ? (temp1 + temp2) / 2.0f
+                  : dht1ok           ? temp1
+                  :                    temp2;
+    if (!fanState && tempAvg >= fanThreshold) {
+      setFan(true);
+      Serial.printf("[AutoFan] %.1f C >= prag %.1f C — PORNIT\n",
+                    tempAvg, fanThreshold);
+    } else if (fanState && tempAvg <= fanThreshold - FAN_HYSTERESIS) {
+      setFan(false);
+      Serial.printf("[AutoFan] %.1f C <= %.1f C — OPRIT\n",
+                    tempAvg, fanThreshold - FAN_HYSTERESIS);
+    }
+  }
+
+  // Payload JSON (contract comun cu backend si mobile)
+  StaticJsonDocument<384> doc;
+  doc["nodeId"]   = NODE_ID;
+  doc["location"] = LOCATION;
+  if (dht1ok) {
+    doc["temperature"] = (float)(round(temp1  * 10.0f) / 10.0f);
+    doc["humidity"]    = (float)(round(humid1 * 10.0f) / 10.0f);
+  }
+  if (dht2ok) {
+    doc["temperature2"] = (float)(round(temp2  * 10.0f) / 10.0f);
+    doc["humidity2"]    = (float)(round(humid2 * 10.0f) / 10.0f);
+  }
+  doc["gasLevel"] = gas;
+  doc["gasAlert"] = gasAlert;
+  doc["light1"]   = light1;
+  doc["light2"]   = light2;
+  doc["lightLux"] = light1;          // alias pentru UI
+  doc["motion"]      = motionState;
+  doc["motionArmed"] = motionArmed;
+  doc["fanOn"]        = fanState;
+  doc["fanAuto"]      = fanAuto;
+  doc["fanThreshold"] = (float)(round(fanThreshold * 10.0f) / 10.0f);
+
+  char payload[384];
   serializeJson(doc, payload);
   mqtt.publish("smarthome/" NODE_ID "/sensors", payload);
 
-  Serial.printf("[Senzori] %.1f°C %.0f%% | gaz %d%s | %s | %.0f lx\n",
-                temp, humid, gas, gasAlert ? " ⚠" : "",
-                motion ? "mișcare" : "liniște", lux);
+  Serial.printf(
+    "[Senzori] T1=%.1f/%.0f%% T2=%.1f/%.0f%% Gaz=%d%s LDR1=%d LDR2=%d Misc=%d\n",
+    dht1ok ? temp1 : 0.0f, dht1ok ? humid1 : 0.0f,
+    dht2ok ? temp2 : 0.0f, dht2ok ? humid2 : 0.0f,
+    gas, gasAlert ? " (!)" : "", light1, light2, motionState);
 }
 
-/* ─── Setup & loop ────────────────────────────────────────── */
+/* ─── Setup ───────────────────────────────────────────────── */
 void setup() {
   Serial.begin(115200);
   Serial.println("\n[Boot] Smart Home — " NODE_ID " (" LOCATION ")");
+  bootMillis = millis();
 
-  // ADC 10 biți (0–1023) — scala așteptată de server și aplicație
-  analogReadResolution(10);
+  analogReadResolution(10);          // 0–1023
 
-  pinMode(PIR_PIN, INPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, LOW);
-  for (int i = 0; i < 4; i++) {
-    pinMode(RELAY_PINS[i], OUTPUT);
-    setRelay(i, false);                       // toate releele oprite la boot
+  // LED-uri de camera
+  for (int i = 0; i < 3; i++) {
+    pinMode(LED_PINS[i], OUTPUT);
+    digitalWrite(LED_PINS[i], LOW);
   }
+  // LED exterior + PIR
+  pinMode(LED_OUT_PIN, OUTPUT);
+  digitalWrite(LED_OUT_PIN, LOW);
+  pinMode(PIR_PIN, INPUT);
 
-#if HAS_SERVO
-  servo.attach(SERVO_PIN);
-  servo.write(0);
-#endif
+  // Buzzer pasiv
+  pinMode(BUZZER_PIN, OUTPUT);
+  noTone(BUZZER_PIN);
 
-  dht.begin();
-  Wire.begin(21, 22);
-  bh1750Ok = lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE);
-  if (!bh1750Ok) Serial.println("[BH1750] Negăsit pe I2C — lux dezactivat");
+  // Ventilator OPRIT la boot = pin in INPUT (releu active-LOW)
+  pinMode(FAN_PIN, INPUT);
+  fanState = false;
+
+  // ADC input-only
+  pinMode(MQ2_PIN,  INPUT);
+  pinMode(LDR1_PIN, INPUT);
+  pinMode(LDR2_PIN, INPUT);
+
+  // Servo (jaluzele inchise la 0°). Un timer dedicat pentru servo.
+  ESP32PWM::allocateTimer(0);
+  servoJaluzele.setPeriodHertz(50);
+  servoJaluzele.attach(SERVO_PIN, 500, 2400);
+  servoJaluzele.write(0);
+
+  dht1.begin();
+  dht2.begin();
 
   loadCredentials();
   connectWifi();
   connectMqtt();
-  Serial.println("[Boot] Gata!");
+
+  Serial.println("[Boot] Gata! (MQ2 si PIR se calibreaza ~60s)");
 }
 
+/* ─── Loop ────────────────────────────────────────────────── */
 void loop() {
   if (WiFi.status() != WL_CONNECTED) connectWifi();
   if (!mqtt.connected()) connectMqtt();
   mqtt.loop();
+
+  handleMotion();                    // PIR verificat des (reactie rapida)
 
   if (millis() - lastPublish >= PUBLISH_INTERVAL) {
     lastPublish = millis();

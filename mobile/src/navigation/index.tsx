@@ -12,6 +12,7 @@ import { T, FONT } from '../theme';
 
 import LoginScreen     from '../screens/LoginScreen';
 import SetupScreen     from '../screens/SetupScreen';
+import ProgramScreen   from '../screens/ProgramScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import HistoryScreen   from '../screens/HistoryScreen';
 import AlertsScreen    from '../screens/AlertsScreen';
@@ -217,6 +218,11 @@ export default function AppNavigator() {
                 <SetupScreen onDone={() => props.navigation.goBack()} />
               )}
             </Stack.Screen>
+            <Stack.Screen
+              name="Program"
+              component={ProgramScreen}
+              options={{ headerShown: false }}
+            />
           </Stack.Group>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />

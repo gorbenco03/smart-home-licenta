@@ -44,6 +44,11 @@
 #define DEFAULT_WIFI_PASS  "smarthome2026"
 #define DEFAULT_MQTT_HOST  "192.168.4.1"
 
+// Fallback final: reteaua de acasa unde RPi e deja conectat (pentru test).
+#define FALLBACK_WIFI_SSID  "Orange-ADXPcy-2G"
+#define FALLBACK_WIFI_PASS  "TtYbS9S24chukKxKEK"   // parola retelei (NU urca pe GitHub)
+#define FALLBACK_MQTT_HOST  "smarthome.local"
+
 #define MQTT_PORT  1883
 #define MQTT_USER  "smarthome"
 #define MQTT_PASS  "smarthome_mqtt_2026"
@@ -75,6 +80,7 @@ String wifiSsid, wifiPass, mqttHost;
 unsigned long lastStatus  = 0;
 unsigned long lastMotion  = 0;     // ultimul moment cu mișcare
 unsigned long lastPublish = 0;
+unsigned long lastMqttTry = 0;     // throttle reconectare MQTT (non-blocking)
 bool ledOn = false;
 
 /* ─── NVS (același namespace ca nodurile senzori) ─────────── */
@@ -182,27 +188,39 @@ void startHttpServer() {
   }
 }
 
-/* ─── WiFi + mDNS (identic cu nodurile senzori) ───────────── */
-void connectWifi() {
-  Serial.printf("[WiFi] Conectare la %s...\n", wifiSsid.c_str());
-  WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+/* ─── WiFi: incearca o retea cu timeout ───────────────────── */
+bool tryWifi(const char* ssid, const char* pass, int maxAttempts) {
+  Serial.printf("[WiFi] Incerc \"%s\"...", ssid);
+  WiFi.disconnect();
+  WiFi.begin(ssid, pass);
+  int a = 0;
+  while (WiFi.status() != WL_CONNECTED && a < maxAttempts) {
+    delay(500); Serial.print("."); a++;
+  }
+  bool ok = (WiFi.status() == WL_CONNECTED);
+  Serial.println(ok ? " OK" : " esuat");
+  return ok;
+}
 
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500); Serial.print("."); attempts++;
+/* ─── WiFi: 3 niveluri (salvata -> hotspot RPi -> retea acasa) ─ */
+void connectWifi() {
+  if (tryWifi(wifiSsid.c_str(), wifiPass.c_str(), 20)) {
+    Serial.printf("[WiFi] Conectat (salvata)! IP: %s\n", WiFi.localIP().toString().c_str());
+    return;
   }
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("\n[WiFi] Eșec — revin la hotspotul de setup");
-    wifiSsid = DEFAULT_WIFI_SSID; wifiPass = DEFAULT_WIFI_PASS;
-    mqttHost = DEFAULT_MQTT_HOST;
-    WiFi.begin(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS);
-    attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 60) {
-      delay(500); Serial.print("."); attempts++;
-    }
-    if (WiFi.status() != WL_CONNECTED) { delay(5000); ESP.restart(); }
+  if (tryWifi(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS, 20)) {
+    wifiSsid = DEFAULT_WIFI_SSID; wifiPass = DEFAULT_WIFI_PASS; mqttHost = DEFAULT_MQTT_HOST;
+    Serial.printf("[WiFi] Conectat (setup RPi)! IP: %s\n", WiFi.localIP().toString().c_str());
+    return;
   }
-  Serial.printf("\n[WiFi] Conectat! IP: %s\n", WiFi.localIP().toString().c_str());
+  if (tryWifi(FALLBACK_WIFI_SSID, FALLBACK_WIFI_PASS, 30)) {
+    wifiSsid = FALLBACK_WIFI_SSID; wifiPass = FALLBACK_WIFI_PASS; mqttHost = FALLBACK_MQTT_HOST;
+    Serial.printf("[WiFi] Conectat (fallback acasa)! IP: %s\n", WiFi.localIP().toString().c_str());
+    return;
+  }
+  Serial.println("[WiFi] Nicio retea disponibila — restart in 5s");
+  delay(5000);
+  ESP.restart();
 }
 
 String resolveMqttHost() {
@@ -236,10 +254,15 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-void connectMqtt() {
+// O singură încercare, NON-blocking, FĂRĂ restart: camera (HTTP) trebuie
+// să rămână funcțională chiar dacă brokerul (Raspberry Pi) lipsește.
+bool connectMqtt() {
+  if (mqtt.connected()) return true;
+
   String host = resolveMqttHost();
   mqtt.setServer(host.c_str(), MQTT_PORT);
   mqtt.setCallback(onMessage);
+  mqtt.setSocketTimeout(2);   // eșec rapid dacă brokerul lipsește (nu bloca camera)
 
   StaticJsonDocument<96> will;
   will["node_id"] = NODE_ID;
@@ -247,25 +270,20 @@ void connectMqtt() {
   char willMsg[96];
   serializeJson(will, willMsg);
 
-  int attempts = 0;
-  while (!mqtt.connected()) {
-    if (mqtt.connect("esp32-" NODE_ID, MQTT_USER, MQTT_PASS,
-                     "smarthome/" NODE_ID "/status", 1, true, willMsg)) {
-      mqtt.subscribe("smarthome/" NODE_ID "/commands");
-
-      StaticJsonDocument<96> st;
-      st["node_id"] = NODE_ID;
-      st["status"]  = "online";
-      char stMsg[96];
-      serializeJson(st, stMsg);
-      mqtt.publish("smarthome/" NODE_ID "/status", stMsg, true);
-      Serial.println("[MQTT] Conectat");
-      return;
-    }
-    Serial.printf("[MQTT] Eroare: %d\n", mqtt.state());
-    if (++attempts >= 10) { delay(1000); ESP.restart(); }
-    delay(3000);
+  if (mqtt.connect("esp32-" NODE_ID, MQTT_USER, MQTT_PASS,
+                   "smarthome/" NODE_ID "/status", 1, true, willMsg)) {
+    mqtt.subscribe("smarthome/" NODE_ID "/commands");
+    StaticJsonDocument<96> st;
+    st["node_id"] = NODE_ID;
+    st["status"]  = "online";
+    char stMsg[96];
+    serializeJson(st, stMsg);
+    mqtt.publish("smarthome/" NODE_ID "/status", stMsg, true);
+    Serial.println("[MQTT] Conectat");
+    return true;
   }
+  Serial.printf("[MQTT] Indisponibil (%d) — camera merge oricum\n", mqtt.state());
+  return false;
 }
 
 /* ─── Setup & loop ────────────────────────────────────────── */
@@ -300,8 +318,12 @@ void setup() {
 
 void loop() {
   if (WiFi.status() != WL_CONNECTED) connectWifi();
-  if (!mqtt.connected()) connectMqtt();
-  mqtt.loop();
+  // Reîncearcă MQTT la fiecare 15s, fără a bloca stream-ul camerei
+  if (!mqtt.connected()) {
+    if (millis() - lastMqttTry >= 15000) { lastMqttTry = millis(); connectMqtt(); }
+  } else {
+    mqtt.loop();
+  }
 
   // ── Mișcare în curte → LED aprins + raportare ──
   bool motion = digitalRead(PIR_PIN) == HIGH;

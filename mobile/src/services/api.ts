@@ -2,7 +2,7 @@ import axios from 'axios';
 import { API_BASE } from './config';
 import { resolveHost, invalidateHost } from './discovery';
 import { useAppStore } from '../store';
-import { SensorReading, AlertItem, NodeInfo, AutomationRule } from '../types';
+import { SensorReading, AlertItem, NodeInfo, AutomationRule, Schedule } from '../types';
 
 const client = axios.create({ baseURL: API_BASE });
 
@@ -79,6 +79,20 @@ export const api = {
 
     remove: (id: number) =>
       client.delete(`/rules/${id}`).then((r) => r.data),
+  },
+
+  schedules: {
+    list: () =>
+      client.get<Schedule[]>('/schedules').then((r) => r.data),
+
+    create: (body: Partial<Schedule>) =>
+      client.post<Schedule>('/schedules', body).then((r) => r.data),
+
+    update: (id: number, body: Partial<Schedule>) =>
+      client.put<Schedule>(`/schedules/${id}`, body).then((r) => r.data),
+
+    remove: (id: number) =>
+      client.delete(`/schedules/${id}`).then((r) => r.data),
   },
 
   setup: {

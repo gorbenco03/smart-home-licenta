@@ -61,14 +61,25 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
       if (topic.endsWith('/sensors')) {
         await this.sensorsService.saveReading({
-          nodeId:      data.nodeId      ?? data.node_id,
-          location:    data.location,
-          temperature: data.temperature ?? data.sensors?.temperature,
-          humidity:    data.humidity    ?? data.sensors?.humidity,
-          gasLevel:    data.gasLevel    ?? data.sensors?.gas_level,
-          gasAlert:    data.gasAlert    ?? data.sensors?.gas_alert ?? false,
-          motion:      data.motion      ?? data.sensors?.motion ?? false,
-          lightLux:    data.lightLux    ?? data.sensors?.light_lux,
+          nodeId:       data.nodeId       ?? data.node_id,
+          location:     data.location,
+          temperature:  data.temperature  ?? data.sensors?.temperature,
+          humidity:     data.humidity     ?? data.sensors?.humidity,
+          gasLevel:     data.gasLevel     ?? data.sensors?.gas_level,
+          gasAlert:     data.gasAlert     ?? data.sensors?.gas_alert ?? false,
+          motion:       data.motion       ?? data.sensors?.motion ?? false,
+          motionArmed:  data.motionArmed  ?? null,
+          // lightLux este aliasul lui light1 (ADC 0-1023 mapate la lux aproximativ)
+          lightLux:     data.lightLux     ?? data.light1 ?? data.sensors?.light_lux,
+          // Câmpuri noi: al 2-lea DHT11 și cele 2 LDR ADC
+          temperature2: data.temperature2 ?? null,
+          humidity2:    data.humidity2    ?? null,
+          light1:       data.light1       ?? null,
+          light2:       data.light2       ?? null,
+          // Stare ventilator (manual/automat + prag)
+          fanOn:        data.fanOn        ?? null,
+          fanAuto:      data.fanAuto      ?? null,
+          fanThreshold: data.fanThreshold ?? null,
         });
       } else if (topic === 'smarthome/alerts') {
         await this.alertsService.create({

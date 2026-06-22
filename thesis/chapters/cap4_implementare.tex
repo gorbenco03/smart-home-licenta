@@ -1,0 +1,742 @@
+% cap4_implementare.tex
+\chapter{Implementarea prototipului}
+\label{ch:implementare}
+
+Capitolul de față descrie concret modul în care componentele prezentate în
+\chapref{ch:metodologie} au fost transpuse în cod funcțional și asamblate
+într-un prototip operațional.
+Sunt tratate, în ordine, firmware-ul nodului interior bazat pe
+\gls{esp32}, firmware-ul camerei exterioare \gls{esp32}-CAM, configurarea
+gateway-ului Raspberry Pi, structura \gls{api}-ului NestJS, motorul de
+detecție a anomaliilor cu \gls{if} și, în final, aplicația mobilă.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Firmware-ul nodului interior (ESP32 WROOM-32)}
+\label{sec:firmware-nod}
+
+\subsection{Pinout și configurare hardware}
+\label{sec:pinout}
+
+Nodul interior este construit în jurul modulului ESP32 WROOM-32.
+Toți pinii \gls{adc} folosiți pentru senzori (MQ-2, \gls{ldr}\,\#1 și
+\gls{ldr}\,\#2) aparțin grupului ADC1 (GPIO34, GPIO35, GPIO36), ceea ce
+permite citiri analogice corecte chiar și cu \gls{wifi} activ — spre
+deosebire de pinii ADC2 care devin inutilizabili în prezența
+radio-ului~\cite{espressif2023esp32}.
+Modulul BH1750 (citire de lux prin I\textsuperscript{2}C), luat în
+considerare inițial, a fost eliminat în favoarea celor două \gls{ldr}
+analogice, simplificând schema de cablare.
+
+\tabref{tab:pinout} centralizează cei unsprezece pini activi ai
+nodului, împărțiți în senzori și actuatori.
+
+\begin{table}[H]
+  \centering
+  \caption{Pinout complet al nodului interior (ESP32 WROOM-32).}
+  \label{tab:pinout}
+  \begin{tabular}{@{} l l p{6.2cm} @{}}
+    \toprule
+    \textbf{Componentă} & \textbf{Pin GPIO} & \textbf{Observații} \\
+    \midrule
+    \gls{dht}11 \#1 (living)   & GPIO4  & Digital, pull-up extern 10\,k\textOmega{} la 3{,}3\,V \\
+    \gls{dht}11 \#2 (dormitor) & GPIO23 & Digital, pull-up extern 10\,k\textOmega{} la 3{,}3\,V \\
+    MQ-2 (gaz, A0)             & GPIO34 & ADC1, intrare; divizor de tensiune 0–3{,}3\,V \\
+    \gls{ldr} \#1 (lumină)     & GPIO35 & ADC1, intrare; divizor cu 10\,k\textOmega{} \\
+    \gls{ldr} \#2 (lumină)     & GPIO36 & ADC1 (VP), intrare; divizor cu 10\,k\textOmega{} \\
+    Buzzer activ               & GPIO5  & Ieșire digitală, oscilator intern \\
+    Servo SG90 (draperii)       & GPIO18 & \gls{pwm} 50\,Hz; alimentat din 5\,V extern \\
+    \gls{led} \#0 (living)     & GPIO25 & Ieșire digitală + rezistor serie 220\,\textOmega{} \\
+    \gls{led} \#1 (dormitor)   & GPIO26 & Ieșire digitală + rezistor serie 220\,\textOmega{} \\
+    \gls{led} \#2 (hol)        & GPIO27 & Ieșire digitală + rezistor serie 220\,\textOmega{} \\
+    Ventilator 5\,V            & GPIO33 & Comandat prin tranzistor NPN (NU direct din GPIO) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\figref{fig:pinout} ilustrează schema de conexiuni a nodului, cu marcarea
+alimentărilor separate: 3{,}3\,V pentru senzori (\gls{dht}11, \gls{ldr})
+și 5\,V extern pentru servo și ventilator.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\singlefigure]{\pics/fig-pinout}
+  \caption{Schema de conexiuni a nodului interior ESP32 WROOM-32
+           (pinout conform \tabref{tab:pinout}).}
+  \label{fig:pinout}
+\end{figure}
+
+\subsection{Citirea senzorilor}
+\label{sec:citire-senzori}
+
+La inițializare, rezoluția \gls{adc} este setată explicit la 10 biți
+(\texttt{analogReadResolution(10)}), oferind valori în intervalul 0–1023.
+Ambii senzori \gls{dht}11 sunt citiți cu biblioteca \emph{Adafruit DHT},
+iar erorile temporare (valori \texttt{NaN}) sunt tratate tolerant:
+dacă cel puțin un senzor raportează date valide, publicarea continuă cu
+câmpurile disponibile; numai dacă ambii eșuează simultan este omisă
+întreaga publicare~\cite{aosong2019dht11}.
+
+Senzorul de gaz MQ-2 returnează o valoare analogică brută (0–1023).
+Când valoarea depășește pragul \texttt{GAS\_THRESHOLD = 350}, firmware-ul
+detectează \emph{frontul crescător} (tranziția \texttt{false → true}),
+publică o alertă pe topicul \texttt{smarthome/alerts} și activează
+buzzerul local cu trei bipuri — prevenind astfel spamul la broker în caz
+de depășire prelungită~\cite{hanwei2020mq2}.
+\listingref{lst:publish-sensors} prezintă nucleul funcției de colectare
+și publicare.
+
+\begin{lstlisting}[language=C++,
+  caption={Fragment din \texttt{publishSensors()} — citire DHT11, MQ-2,
+           LDR și construire payload JSON (esp32\_node.ino).},
+  label=lst:publish-sensors]
+// Citire senzori ADC — 10 biti (0-1023)
+int gas    = analogRead(MQ2_PIN);   // GPIO34
+int light1 = analogRead(LDR1_PIN);  // GPIO35
+int light2 = analogRead(LDR2_PIN);  // GPIO36
+
+// Alerta gaz — doar pe frontul crescator
+bool gasAlert = (gas > GAS_THRESHOLD);
+if (gasAlert && !gasAlertActive) {
+  publishGasAlert(gas);
+  beep(3);         // semnal sonor local imediat
+}
+gasAlertActive = gasAlert;
+
+// Payload JSON (contract cu backend si mobile)
+StaticJsonDocument<384> doc;
+doc["nodeId"]    = NODE_ID;          // "esp32_node_a"
+doc["location"]  = LOCATION;        // "interior"
+if (dht1ok) { doc["temperature"] = temp1; doc["humidity"] = humid1; }
+if (dht2ok) { doc["temperature2"]= temp2; doc["humidity2"]= humid2; }
+doc["gasLevel"]  = gas;
+doc["gasAlert"]  = gasAlert;
+doc["light1"]    = light1;
+doc["light2"]    = light2;
+doc["lightLux"]  = light1;          // alias backward-compat
+\end{lstlisting}
+
+\subsection{Actuatori}
+\label{sec:actuatori}
+
+Ventilatorul (5\,V) nu poate fi alimentat direct din \gls{gpio} —
+curentul maxim al unui pin ESP32 este de 12\,mA — astfel că este comandat
+printr-un tranzistor NPN pe GPIO33: nivel HIGH pe pin conduce tranzistorul
+și închide circuitul motorului.
+Servo-ul SG90, folosit pentru controlul draperiilor, primește semnal
+\gls{pwm} la 50\,Hz prin biblioteca \emph{ESP32Servo}; funcția
+\texttt{servoDraperii.write(angle)} acceptă unghiuri între 0° și 180°
+(corespunzând draperiilor complet deschise, respectiv complet închise).
+
+Ventilatorul poate fi acționat în două moduri, comutabile din aplicație:
+\emph{manual} (comenzile \texttt{fan\_on}/\texttt{fan\_off}) și
+\emph{automat} (comanda \texttt{fan\_auto}). În modul automat, firmware-ul
+pornește ventilatorul când temperatura medie a celor doi senzori \gls{dht}11
+depășește un \textbf{prag configurabil de la distanță} (comanda
+\texttt{fan\_threshold}, implicit 28\,°C) și îl oprește sub
+(prag~$-$~2\,°C), histerezisul reducând oscilațiile rapide în jurul pragului.
+Atât modul, cât și pragul sunt salvate în memoria NVS și raportate înapoi în
+mesajul de senzori (\texttt{fanOn}, \texttt{fanAuto}, \texttt{fanThreshold}),
+astfel încât aplicația reflectă starea reală a dispozitivului.
+
+\subsection{Comunicație MQTT, provisioning Wi-Fi și mDNS}
+\label{sec:mqtt-provisioning}
+
+La pornire, nodul citește credențialele Wi-Fi și adresa brokerului
+\gls{mqtt} din memoria NVS (\emph{Non-Volatile Storage}) folosind
+biblioteca \emph{Preferences}.
+Dacă rețeaua salvată nu răspunde, dispozitivul revine automat la
+hotspot-ul de configurare (\texttt{SmartHome-Setup}), de unde o comandă
+\texttt{wifi\_update} — primită ulterior tot prin \gls{mqtt} — poate
+instala noi credențiale și reporni nodul.
+
+Adresa brokerului poate fi specificată ca nume mDNS (\texttt{smarthome.local});
+în acest caz, funcția \texttt{resolveMqttHost()} interogează serverul mDNS
+local (până la cinci tentative) și returnează IP-ul corespunzător,
+eliminând necesitatea configurării unui IP static pe gateway~\cite{rfc6762mdns}.
+
+Conexiunea \gls{mqtt} este stabilită cu autentificare (utilizator și parolă)
+și cu un mesaj \emph{Last Will and Testament} reținut pe topicul
+\texttt{smarthome\slb{} esp32\_node\_a\slb{}status}:
+dacă brokerul detectectează o deconectare bruscă, publică automat
+\texttt{\{"node\_id":\allowbreak"esp32\_node\_a",\allowbreak"status":\allowbreak"offline"\}}, informând
+aplicația mobilă în timp real~\cite{oasis2019mqtt}.
+La conectare cu succes, nodul se abonează la
+\texttt{smarthome\slb{} esp32\_node\_a\slb{}commands} și publică imediat statusul
+\texttt{online}.
+Publicarea datelor de senzori are loc la fiecare 5\,s pe topicul
+\texttt{smarthome\slb{} esp32\_node\_a\slb{}sensors}.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Firmware-ul ESP32-CAM (nod exterior)}
+\label{sec:firmware-cam}
+
+Nodul exterior este realizat pe un modul AI-Thinker ESP32-CAM echipat cu
+senzorul de imagine OV2640~\cite{espressif2023esp32cam}.
+Singurul senzor de mișcare din sistem — un \gls{pir} HC-SR501 — este
+conectat la GPIO13~\cite{pir2019hcsr501}.
+La detecția mișcării, un \gls{led} exterior conectat la GPIO12 se aprinde
+timp de 30\,s (gestionat prin variabila \texttt{lastMotion} și temporizare
+cu \texttt{millis()}).
+
+\subsection{Serverul HTTP și stream-ul MJPEG}
+\label{sec:mjpeg}
+
+Camera este inițializată prin \texttt{esp\_camera\_init()}, cu rezoluție
+SVGA (800$\times$600) dacă este prezentă memoria PSRAM, sau VGA în lipsa
+acesteia.
+Firmware-ul pornește un server HTTP pe portul 80 cu două rute:
+\begin{itemize}
+  \item \texttt{GET /capture} — returnează un snapshot JPEG al cadrului
+        curent (\texttt{Content-Type: image/jpeg});
+  \item \texttt{GET /stream} — transmite un flux \emph{Motion JPEG}
+        (\texttt{multipart/x-mixed-replace}), cu o pauză de 50\,ms între
+        cadre ($\approx$15–20 fps), lăsând procesorului timp și pentru
+        bucla \gls{mqtt}.
+\end{itemize}
+
+Camera devine accesibilă în rețeaua locală ca
+\texttt{http://smarthome-cam.local} prin înregistrarea unui serviciu mDNS
+(\texttt{MDNS.begin("smarthome-cam")}), similar nodului interior.
+Tot periodic (la 5\,s), nodul publică un mesaj JSON pe topicul
+\texttt{smarthome/esp32\_cam\_node/sensors} conținând câmpul \texttt{motion}
+(0/1), iar conexiunea \gls{mqtt} folosește același mecanism
+\emph{Last Will} ca nodul interior.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Gateway Raspberry Pi}
+\label{sec:gateway}
+
+Gateway-ul rulează pe un Raspberry Pi 3B+ și găzduiește toate serviciile
+de infrastructură ale sistemului.
+
+\textbf{Mosquitto} este brokerul \gls{mqtt} (portul 1883), configurat cu
+autentificare prin fișier de parole.
+Acesta primește publicările nodurilor ESP32, le distribuie abonaților
+(\gls{api}-ului NestJS și motorului ML) și gestionează mesajele
+\emph{retained} pentru statusul nodurilor.
+
+\textbf{PostgreSQL + TimescaleDB} stochează toate citirile de senzori în
+hypertabela \texttt{sensor\_readings}, optimizată pentru interogări
+time-series prin indexuri pe coloana \texttt{time}~\cite{timescaledb2017,postgresql2024}.
+Celelalte tabele ale schemei (\texttt{alerts}, \texttt{nodes},
+\texttt{automation\_rules}, \texttt{users}, \texttt{ml\_models}) sunt
+tabele PostgreSQL standard.
+
+Fiecare componentă software este înregistrată ca serviciu \textbf{systemd},
+asigurând pornirea automată la boot și repornirea în caz de eroare:
+\texttt{smarthome-api.service} (NestJS),
+\texttt{smarthome-ml.service} (antrenare zilnică la 03:00) și
+\texttt{mosquitto.service}.
+
+% ──────────────────────────────────────────────────────────────────
+\section{API NestJS}
+\label{sec:api}
+
+\gls{api}-ul backend este implementat cu framework-ul NestJS (Node.js,
+TypeScript) și rulează pe portul 3000 al gateway-ului~\cite{nestjs2024}.
+TypeORM asigură maparea obiect-relațională față de PostgreSQL.
+
+\subsection{Structura modulelor}
+\label{sec:module-nestjs}
+
+\texttt{AppModule} importă nouă module funcționale:
+\texttt{AuthModule}, \texttt{UsersModule}, \texttt{SensorsModule},
+\texttt{AlertsModule}, \texttt{RulesModule}, \texttt{CommandsModule},
+\texttt{MqttModule}, \texttt{SimulatorModule} și \texttt{SetupModule}.
+Comunicarea inter-modul se realizează prin \texttt{EventEmitter2}
+(biblioteca \emph{@nestjs/event-emitter}), evitând dependențe circulare.
+
+\subsection{Subscriber MQTT}
+\label{sec:subscriber-mqtt}
+
+\texttt{MqttService} implementează \texttt{OnModuleInit} și se conectează
+la Mosquitto la pornire (dezactivat automat dacă \texttt{SIMULATE=true}).
+Se abonează la trei familii de topicuri cu wildcard:
+\texttt{smarthome/+/sensors} (date senzori), \texttt{smarthome/alerts}
+(alerte hardware) și \texttt{smarthome/+/status} (prezența nodurilor).
+\listingref{lst:mqtt-handler} prezintă logica de procesare a mesajelor.
+
+\begin{lstlisting}[language=TypeScript,
+  caption={Handler de mesaje MQTT în \texttt{MqttService}
+           (\texttt{mqtt.service.ts}) — ramificarea pe tip de topic.},
+  label=lst:mqtt-handler]
+private async handleMessage(topic: string, payload: string) {
+  const data = JSON.parse(payload);
+
+  if (topic.endsWith('/sensors')) {
+    await this.sensorsService.saveReading({
+      nodeId:       data.nodeId ?? data.node_id,
+      temperature:  data.temperature,
+      humidity:     data.humidity,
+      temperature2: data.temperature2 ?? null,
+      humidity2:    data.humidity2    ?? null,
+      gasLevel:     data.gasLevel,
+      gasAlert:     data.gasAlert ?? false,
+      light1:       data.light1   ?? null,
+      light2:       data.light2   ?? null,
+      lightLux:     data.lightLux ?? data.light1,
+      motion:       data.motion   ?? false,
+    });
+  } else if (topic === 'smarthome/alerts') {
+    await this.alertsService.create({
+      nodeId:    data.node_id,
+      alertType: data.alert_type,   // ex. "GAS_DETECTED"
+      severity:  data.alert_type === 'GAS_DETECTED' ? 'critical' : 'medium',
+      location:  data.location,
+      details:   data.details,
+    });
+  } else if (topic.endsWith('/status')) {
+    await this.sensorsService.updateNodeStatus(data);
+  }
+}
+\end{lstlisting}
+
+Publicarea comenzilor spre noduri se face prin evenimentul
+\texttt{command.sent} emis de \texttt{CommandsService} și capturat de
+\texttt{MqttService}, care îl publică pe topicul
+\texttt{smarthome/\{nodeId\}/commands}.
+
+\subsection{WebSocket (Socket.IO)}
+\label{sec:websocket}
+
+\texttt{SensorsGateway} declară un namespace Socket.IO \texttt{/live} și
+reacționează la trei evenimente interne:
+\texttt{sensor.reading} → emite \texttt{sensor\_update} (datele noi de senzori),
+\texttt{alert.new} → emite \texttt{alert},
+\texttt{node.status} → emite \texttt{node\_status}.
+La conectarea unui client, tokenul \gls{jwt} este verificat opțional;
+dacă tokenul e prezent dar invalid, clientul este deconectat imediat.
+
+\subsection{Endpointuri REST și autentificare JWT}
+\label{sec:rest}
+
+Toate rutele protejate sunt acoperite de garda \texttt{JwtAuthGuard}.
+Tabelul următor rezumă principalele endpointuri~\cite{jones2015jwt}:
+
+\begin{table}[H]
+  \centering
+  \caption{Principalele endpointuri \gls{rest} ale \gls{api}-ului NestJS.}
+  \label{tab:rest-endpoints}
+  \begin{tabular}{@{} l l p{5.5cm} @{}}
+    \toprule
+    \textbf{Metodă} & \textbf{Cale} & \textbf{Descriere} \\
+    \midrule
+    POST & \texttt{/api/auth/login}             & Autentificare; returnează token JWT \\
+    GET  & \texttt{/api/sensors/latest}         & Ultima citire per nod \\
+    GET  & \texttt{/api/sensors/nodes}          & Lista nodurilor cu status online \\
+    GET  & \texttt{/api/sensors/history}        & Istoric cu filtre \texttt{nodeId}, \texttt{from}, \texttt{to}, \texttt{limit} \\
+    GET  & \texttt{/api/alerts}                 & Toate alertele \\
+    POST & \texttt{/api/alerts/\{id\}/acknowledge} & Marchează alertă ca recunoscută \\
+    POST & \texttt{/api/commands/\{nodeId\}}    & Trimite comandă actuator \\
+    GET  & \texttt{/api/rules}                  & Reguli de automatizare \\
+    GET  & \texttt{/api/setup/status}           & Status provisionare Wi-Fi \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Autentificarea utilizează JWT cu semnătură HS256.
+Serviciul \texttt{AuthService} verifică parola prin \texttt{bcrypt.compare()}
+față de hash-ul stocat în baza de date~\cite{provos2003bcrypt},
+iar \texttt{JwtService.sign()} emite tokenul cu payload
+\texttt{\{sub, username\}}.
+
+\subsection{Modulul simulator}
+\label{sec:simulator}
+
+Pentru dezvoltare fără hardware fizic, variabila de mediu
+\texttt{SIMULATE=true} activează \texttt{SimulatorService}.
+Acesta generează la fiecare 5\,s date realiste pentru nodul interior
+(\texttt{esp32\_node\_a}): temperaturi de bază de 21\,°C în living și
+19\,°C în dormitor, umiditate, gaz și mișcare aleatorie, inclusiv
+câmpurile \texttt{temperature2}, \texttt{humidity2}, \texttt{light1},
+\texttt{light2}, asigurând paritatea cu schema reală a payload-ului.
+Când \texttt{SIMULATE=false}, \texttt{MqttService} preia controlul,
+iar \texttt{SimulatorService} nu pornește timer-ul.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Motorul de detecție a anomaliilor cu Isolation Forest}
+\label{sec:motor-ml}
+
+Detecția anomaliilor comportamentale constituie contribuția originală a
+acestei lucrări.
+Motorul \gls{ml} rulează în întregime local pe Raspberry Pi, fără
+dependență de cloud, în acord cu principiul \emph{local-first}
+descris în \chapref{ch:metodologie}~\cite{liu2008isolation,pedregosa2011scikit}.
+
+\subsection{Ingineria trăsăturilor (\texttt{features.py})}
+\label{sec:features}
+
+Funcția \texttt{build\_features(df)} transformă un DataFrame Pandas cu
+citiri brute în matricea de trăsături necesară modelului~\cite{mckinney2010pandas}.
+Cele 12 trăsături, în ordinea fixă din \texttt{FEATURE\_NAMES}, sunt
+descrise în \tabref{tab:features-cod}.
+
+\begin{table}[H]
+  \centering
+  \caption{Cele 12 trăsături utilizate de motorul Isolation Forest.}
+  \label{tab:features-cod}
+  \begin{tabular}{@{} r l p{6.5cm} @{}}
+    \toprule
+    \textbf{Idx} & \textbf{Trăsătură} & \textbf{Sursă / transformare} \\
+    \midrule
+    0  & \texttt{temperature}      & DHT11 \#1, °C \\
+    1  & \texttt{humidity}         & DHT11 \#1, \%RH \\
+    2  & \texttt{gas\_normalized}  & MQ-2 ADC $/ 4095$ \\
+    3  & \texttt{lux\_normalized}  & $\log_{1p}(\text{light1}) / 7{,}0$ (LDR \#1, scara ADC) \\
+    4  & \texttt{motion}           & \gls{pir} 0/1 (de pe ESP32-CAM, GPIO13) \\
+    5  & \texttt{hour\_of\_day}    & Ora din zi, 0–23 \\
+    6  & \texttt{day\_of\_week}    & 0 (luni) – 6 (duminică) \\
+    7  & \texttt{is\_weekend}      & 1 dacă zi = sâmbătă sau duminică \\
+    8  & \texttt{is\_night}        & 1 dacă oră $\geq 23$ sau oră $< 6$ \\
+    9  & \texttt{temp\_delta\_1h}  & Diferența de temperatură față de 2 citiri anterioare \\
+    10 & \texttt{motion\_count\_10}& Suma evenimentelor PIR în fereastra de 10 citiri \\
+    11 & \texttt{temp\_avg}        & Media DHT11 \#1 și \#2 (fallback = DHT11 \#1) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Trăsăturile temporale (ora, ziua, weekend, noapte) permit modelului să
+distingă comportamente normale specifice perioadei (ex. mișcare
+nocturnă sau temperaturi ridicate în weekend) de adevăratele anomalii.
+Normalizarea \texttt{StandardScaler} (medie zero, deviație standard unu)
+este aplicată în \texttt{train.py} și reutilizată în \texttt{infer.py}.
+
+\listingref{lst:features} prezintă calculul trăsăturilor derivate.
+
+\begin{lstlisting}[language=Python,
+  caption={Calcul trăsături derivate în \texttt{features.py} —
+           normalizare gaz, lumină și media DHT11.},
+  label=lst:features]
+df['gas_normalized'] = df['gas_level'].fillna(0) / 4095.0
+
+# Luminozitate: LDR ADC 0-1023; log1p/7 → interval ~[0, 1]
+if 'light1' in df.columns:
+    raw_light = df['light1'].fillna(
+        df.get('light_lux', pd.Series(0, index=df.index)).fillna(0))
+else:
+    raw_light = df['light_lux'].fillna(0)
+df['lux_normalized'] = np.log1p(raw_light) / 7.0
+
+# Media DHT11 #1 si #2 (daca #2 lipseste, fallback la #1)
+if 'temperature2' in df.columns:
+    temp2 = df['temperature2'].fillna(df['temperature'])
+else:
+    temp2 = df['temperature']
+df['temp_avg'] = (df['temperature'] + temp2) / 2.0
+\end{lstlisting}
+
+\subsection{Antrenarea modelului (\texttt{train.py})}
+\label{sec:train}
+
+Scriptul \texttt{train.py} extrage din PostgreSQL ultimele 30 de zile de
+citiri fără alertă de gaz (citirile de gaz anormal ar perturba distribuția
+normală), construiește matricea de trăsături, aplică
+\texttt{StandardScaler} și antrenează un \texttt{IsolationForest} cu
+parametrii: \texttt{contamination=0.05} (5\% din date asumate anomale),
+\texttt{n\_estimators=100}, \texttt{random\_state=42}~\cite{liu2008isolation}.
+Este impus un minim de 500 de rânduri; sub acest prag, scriptul se
+oprește cu mesaj de informare, fără a suprascrie modelul existent.
+
+Modelul antrenat și scalerul sunt persistate cu \texttt{joblib}
+(\texttt{isolation\_forest.pkl}, \texttt{scaler.pkl}), iar metadatele
+versiunii (număr de rânduri, contaminare, lista de trăsături) sunt
+înregistrate în tabela \texttt{ml\_models} din PostgreSQL.
+Reantrenarea este declanșată zilnic la 03:00 de serviciul systemd
+\texttt{smarthome-ml.service} prin \texttt{scheduler.py}.
+
+\subsection{Inferența în timp real (\texttt{infer.py})}
+\label{sec:infer}
+
+Clasa \texttt{AnomalyDetector} expune metoda \texttt{score(reading: dict)}
+care primește o citire nouă (dicționar Python), construiește un DataFrame
+de un singur rând, aplică \texttt{build\_features()} și
+\texttt{scaler.transform()}, apoi calculează
+\texttt{model.\allowbreak score\_samples(\allowbreak X\_scaled)[0]}.
+Un scor sub pragul \texttt{ANOMALY\_THRESHOLD = -0.1} declanșează
+crearea unei alerte de tip \texttt{ML\_ANOMALY} în baza de date,
+urmată de notificarea aplicației mobile prin WebSocket~\cite{chandola2009anomaly}.
+
+\textbf{Strategia cold-start}: în primele zile de funcționare, când
+baza de date nu are suficiente date pentru antrenare ($< 500$ înregistrări),
+motorul revine la reguli cu prag hardcodat (gaz $> 300$,
+temperatură $> 35$\,°C sau $< 5$\,°C, mișcare în intervalul 23:00–06:00),
+asigurând un nivel minim de protecție până când modelul statistic poate
+fi inițializat.
+Funcția \texttt{is\_ready()} permite codului apelant să distingă cele
+două regimuri.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Fluxuri principale — diagrame de secvență}
+\label{sec:secvente}
+
+Această secțiune descrie cele trei fluxuri principale ale sistemului
+prin diagrame de secvență UML.
+
+\subsection{Fluxul de monitorizare}
+\label{sec:secv-monitor}
+
+\figref{fig:secv-monitor} ilustrează ciclul de colectare și afișare a
+datelor de senzori.
+La fiecare 5\,s, ESP32 citește toți senzorii și publică un mesaj JSON pe
+topicul \texttt{smarthome\slb{} esp32\_node\_a\slb{}sensors}.
+\texttt{MqttService} (NestJS) recepționează mesajul, apelează
+\texttt{SensorsService.saveReading()} care persistă datele în
+TimescaleDB, emit evenimentul intern \texttt{sensor.reading}, iar
+\texttt{SensorsGateway} transmite \texttt{sensor\_update} prin
+Socket.IO tuturor clienților conectați la namespace-ul \texttt{/live}.
+Aplicația mobilă actualizează dashboard-ul în timp real prin
+hook-ul React Query care ascultă acest eveniment.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\singlefigure]{\pics/fig-secventa-monitorizare}
+  \caption{Diagrama de secvență pentru fluxul de monitorizare:
+           ESP32 → Mosquitto → NestJS → TimescaleDB → App.}
+  \label{fig:secv-monitor}
+\end{figure}
+
+\subsection{Fluxul de comandă a actuatorilor}
+\label{sec:secv-comanda}
+
+\figref{fig:secv-comanda} descrie traseul unei comenzi de la utilizator
+la actuatorul fizic.
+Utilizatorul apasă butonul „LED 1 ON" în ecranul Control al aplicației,
+care trimite \texttt{POST /api/commands/esp32\_node\_a} cu corpul
+\texttt{\{"action":"led\_on","led":0\}}.
+\texttt{CommandsController} (NestJS) procesează cererea, emite evenimentul
+\texttt{command.sent}, iar \texttt{MqttService} publică comanda pe topicul
+\texttt{smarthome\slb{} esp32\_node\_a\slb{}commands} (QoS 1).
+ESP32 recepționează mesajul în callback-ul \texttt{onMessage()},
+apelează \texttt{setLed(0, true)} și aplică nivel HIGH pe GPIO25.
+Întreg fluxul se desfășoară în rețeaua locală, fără ieșire pe internet.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\singlefigure]{\pics/fig-secventa-comanda}
+  \caption{Diagrama de secvență pentru fluxul de comandă a actuatorilor:
+           App → NestJS → Mosquitto → ESP32 → actuator fizic.}
+  \label{fig:secv-comanda}
+\end{figure}
+
+\subsection{Fluxul de detecție a anomaliilor}
+\label{sec:secv-alerta}
+
+\figref{fig:secv-alerta} prezintă traseul complet al unei anomalii
+detectate de motorul \gls{if}.
+O citire nouă sosită pe topicul \texttt{smarthome/+/sensors} este salvată
+în baza de date, după care \texttt{SensorsService} apelează modulul ML
+(\texttt{ml.service.ts}) care invocă sincron \texttt{AnomalyDetector.score()}.
+Dacă scorul returnat este sub pragul $-0{,}1$, \texttt{AlertsService}
+creează o înregistrare de tip \texttt{ML\_ANOMALY} în tabela
+\texttt{alerts}, emit evenimentul \texttt{alert.new}, iar
+\texttt{SensorsGateway} îl transmite aplicației prin Socket.IO.
+Utilizatorul primește o notificare vizuală pe ecranul Alerte.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\singlefigure]{\pics/fig-secventa-alerta}
+  \caption{Diagrama de secvență pentru detecția anomaliei comportamentale
+           cu \gls{if}: NestJS apelează \texttt{infer.py} și generează
+           alertă \texttt{ML\_ANOMALY}.}
+  \label{fig:secv-alerta}
+\end{figure}
+
+% ──────────────────────────────────────────────────────────────────
+\section{Aplicația mobilă}
+\label{sec:mobile}
+
+Interfața utilizatorului este implementată ca aplicație React Native 0.81
+compilată cu Expo SDK 54, targetând iOS și Android~\cite{reactnative2024,expo2024}.
+Starea globală este gestionată cu \textbf{Zustand}, apelurile \gls{rest}
+cu \textbf{React Query}, iar datele în timp real prin \textbf{Socket.IO}
+conectat la namespace-ul \texttt{/live} al \gls{api}-ului.
+Autentificarea utilizează token \gls{jwt} stocat local.
+
+\subsection{Discovery-ul gateway-ului}
+\label{sec:discovery}
+
+La prima pornire, aplicația încearcă să contacteze gateway-ul în
+ordinea: variabila de mediu configurată la build-time,
+\texttt{http://smarthome.local:3000} (mDNS) sau adresa fixă a
+hotspot-ului de configurare (\texttt{192.168.4.1}).
+Această strategie elimină nevoia configurării manuale a IP-ului în
+scenariile tipice de rețea locală, susținând obiectivul de funcționare
+„plug and play". Implementarea, prezentată în \listingref{lst:discovery},
+sondează \emph{în paralel} toate adresele candidate și o reține pe prima
+care răspunde la endpointul public \texttt{/api/setup/status}; la o eroare
+de rețea adresa este invalidată, astfel încât aplicația redescoperă
+gateway-ul atunci când telefonul trece, de exemplu, de pe hotspot pe
+rețeaua Wi-Fi a casei.
+
+\begin{lstlisting}[language=TypeScript,
+  caption={Descoperirea automată a gateway-ului în rețea (\texttt{services/discovery.ts}).},
+  label=lst:discovery]
+const CANDIDATES = [
+  API_HOST,                       // variabila de mediu / fallback
+  'http://smarthome.local:3000',  // mDNS - orice retea
+  HOTSPOT_HOST,                   // hotspot RPi - 192.168.4.1
+];
+
+// sondeaza in paralel; prima adresa care raspunde "castiga"
+export async function resolveHost(force = false): Promise<string> {
+  if (resolvedHost && !force) return resolvedHost;
+  return Promise.any(CANDIDATES.map(probe))
+    .then((host) => { resolvedHost = host; return host; })
+    .catch(() => API_HOST);
+}
+
+async function probe(host: string): Promise<string> {
+  // /api/setup/status e public si raspunde doar de pe RPi
+  await axios.get(`${host}/api/setup/status`, { timeout: 4000 });
+  return host;
+}
+\end{lstlisting}
+
+\subsection{Recepția datelor în timp real (Socket.IO)}
+\label{sec:mobile-ws}
+
+Actualizarea live a interfeței nu se bazează pe interogare repetată
+(\emph{polling}), ci pe o conexiune \textbf{Socket.IO} către namespace-ul
+\texttt{/live} al \gls{api}-ului, autentificată cu același token \gls{jwt}.
+La fiecare eveniment primit de la server, handler-ul actualizează direct
+store-ul Zustand, iar componentele abonate se redesenează automat
+(\listingref{lst:ws-client}). Reconectarea este automată, cu un număr
+nelimitat de încercări — esențial pentru un dispozitiv mobil care își
+schimbă frecvent starea rețelei.
+
+\begin{lstlisting}[language=TypeScript,
+  caption={Clientul Socket.IO: evenimente live $\rightarrow$ store global (\texttt{services/socket.ts}).},
+  label=lst:ws-client]
+socket = io(`${host}/live`, {
+  auth: { token },
+  transports: ['websocket'],
+  reconnectionDelay: 3000,
+  reconnectionAttempts: Infinity,
+});
+
+// citire noua de senzor -> actualizeaza store-ul -> UI live
+socket.on('sensor_update', (reading: SensorReading) => {
+  useAppStore.getState().setLatestReading(reading);
+});
+socket.on('alert', (alert: AlertItem) => {
+  useAppStore.getState().addAlert(alert);          // badge + ecran Alerte
+});
+socket.on('node_status', (s: { nodeId: string; online: boolean }) => {
+  useAppStore.getState().setNodeStatus(s.nodeId, s.online);
+});
+\end{lstlisting}
+
+\subsection{Trimiterea comenzilor către actuatori}
+\label{sec:mobile-cmd}
+
+Comenzile către actuatori sunt expuse printr-o singură funcție generică
+\texttt{api.\allowbreak commands.\allowbreak send(nodeId,\allowbreak action,\allowbreak extras)}, care construiește
+corpul \gls{json} al cererii \gls{rest}; \texttt{extras} permite atașarea
+parametrilor specifici (de exemplu indexul \gls{led}-ului sau unghiul
+servomotorului). În ecranul de control, fiecare acțiune este înfășurată
+într-o mutație React Query care aplică o \emph{actualizare optimistă} a
+stării vizuale, astfel încât comutatorul reacționează instantaneu
+(\listingref{lst:mobile-cmd}).
+
+\begin{lstlisting}[language=TypeScript,
+  caption={Trimiterea unei comenzi de actuator cu actualizare optimistă (\texttt{services/api.ts} + \texttt{ControlScreen.tsx}).},
+  label=lst:mobile-cmd]
+// services/api.ts - o singura functie pentru toate comenzile
+send: (nodeId, action, extras) =>
+  client.post(`/commands/${nodeId}`, { action, ...extras })
+        .then((r) => r.data),
+
+// ControlScreen.tsx - buton LED cu actualizare optimista
+const mutation = useMutation({
+  mutationFn: ({ action, led }) => api.commands.send(nodeId, action, { led }),
+  onSuccess: (_, vars) =>
+    setLeds((prev) => ({ ...prev, [vars.led]: vars.action === 'led_on' })),
+});
+// la apasarea butonului:
+mutation.mutate({ action: on ? 'led_off' : 'led_on', led: led.index });
+\end{lstlisting}
+
+\subsection{Ecranele aplicației}
+\label{sec:ecrane}
+
+Aplicația este organizată în patru tab-uri principale accesibile după
+autentificare, plus un ecran de setup:
+
+\textbf{Dashboard} afișează un „Hero card" cu temperatura medie,
+umiditatea, iluminarea și nivelul de gaz agregate de pe toate nodurile,
+urmat de tile-uri individuale pentru fiecare nod.
+Ecranul prezintă distinct datele celor doi senzori \gls{dht}11
+(\texttt{temperature}/\texttt{humidity} pentru living și
+\texttt{temperature2}/\texttt{humidity2} pentru dormitor)
+și valorile brute ADC ale celor două \gls{ldr}-uri (\texttt{light1},
+\texttt{light2}).
+Sparkline-uri animate vizualizează tendința recentă a fiecărei valori,
+iar un indicator „scor de siguranță" sintetizează starea generală.
+
+\textbf{Control} permite acționarea tuturor actuatorilor:
+\begin{itemize}
+  \item Trei butoane individuale pentru \gls{led}-urile din living
+        (GPIO25), dormitor (GPIO26) și hol (GPIO27);
+  \item Comutator pentru ventilator (GPIO33 prin tranzistor);
+  \item Trei preset-uri pentru servo (draperii): Deschis (0°), 50\%
+        (90°), Închis (180°);
+  \item Buton de test buzzer și buton „Oprire totală" (trimite comanda
+        \texttt{all\_off});
+  \item Scene predefinite: Acasă, Plec, Noapte, Cinema;
+  \item Vizualizare cameră: snapshot (polling la 5\,s via
+        \texttt{GET /capture}) și stream live MJPEG redat în
+        \texttt{WebView} via \texttt{GET /stream}.
+\end{itemize}
+
+\textbf{Istoric} prezintă grafice de tendință pentru parametrii
+selectați (temperatură, umiditate, gaz, lumină) pe intervale de
+timp configurabile, folosind date din \texttt{GET /api/sensors/history}.
+
+\textbf{Alerte} listează cronologic toate alertele generate de sistem
+(\texttt{GAS\_DETECTED}, \texttt{MOTION\_NIGHT}, \texttt{ALERT\_HEAT},
+\texttt{ALERT\_COLD}, \texttt{ML\_ANOMALY}), cu indicatori de severitate
+și posibilitatea de a marca o alertă ca recunoscută
+(\texttt{POST /api/alerts/\{id\}/acknowledge}).
+
+\figref{fig:mobile} prezintă capturi reale din aplicație, ilustrând
+limbajul vizual \emph{glassmorphism} adoptat: suprafețe translucide cu
+estompare (\textit{blur}), accente vii pe gradient (indigo–cyan),
+tipografie Space~Grotesk pentru valori numerice și Inter pentru text,
+respectând contrastul \gls{ui} conform recomandărilor de accesibilitate.
+
+\begin{figure}[H]
+  \centering
+  \subfloat[Dashboard]{\includegraphics[width=0.235\textwidth]{\pics/fig-mobile-dashboard}}\hfill
+  \subfloat[Alerte]{\includegraphics[width=0.235\textwidth]{\pics/fig-mobile-alerte}}\hfill
+  \subfloat[Control (sus)]{\includegraphics[width=0.235\textwidth]{\pics/fig-mobile-control1}}\hfill
+  \subfloat[Control (jos)]{\includegraphics[width=0.235\textwidth]{\pics/fig-mobile-control2}}
+  \caption{Capturi reale din aplicația mobilă: (a)~Dashboard — scor de
+           siguranță, medii ambientale și tile-uri pe camere; (b)~Alerte —
+           cronologie cu severitate și stare de confirmare; (c)–(d)~Control —
+           cameră live, scene, draperii (servo), \gls{led}-uri și ventilator,
+           cu indicator „nod offline" când nodul nu este conectat.}
+  \label{fig:mobile}
+\end{figure}
+
+% ──────────────────────────────────────────────────────────────────
+\section{Sumar}
+\label{sec:implementare-sumar}
+
+Capitolul a prezentat implementarea concretă a fiecărui strat al
+sistemului smart home local-first.
+Firmware-ul nodului interior (ESP32 WROOM-32) gestionează cei unsprezece
+pini activi, publică un payload JSON standardizat la 5\,s și asigură
+reconectarea automată la broker cu mecanisme \emph{Last Will} și
+provisioning \gls{wifi} prin NVS.
+ESP32-CAM adaugă capacitate video (stream MJPEG, snapshot JPEG) și
+detecție de mișcare prin \gls{pir} GPIO13.
+Gateway-ul Raspberry Pi orchestrează Mosquitto, PostgreSQL/TimescaleDB
+și serviciile systemd.
+\gls{api}-ul NestJS leagă toate componentele prin module clare (MQTT,
+WebSocket, \gls{rest}, auth \gls{jwt}).
+Contribuția originală — motorul Isolation Forest cu 12 trăsături —
+rulează local și detectează anomalii comportamentale în timp real,
+cu strategie cold-start pentru fazele inițiale de colectare a datelor.
+Aplicația mobilă React Native/Expo oferă vizualizare live, control
+complet al actuatorilor și acces la camera exterioară, toate fără
+dependență de cloud.

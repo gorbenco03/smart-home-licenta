@@ -8,6 +8,7 @@ export interface SensorReading {
   gasLevel: number;
   gasAlert: boolean;
   motion: boolean;
+  motionArmed?: boolean;   // PIR armat/dezarmat din aplicație
   lightLux: number;
   // Al 2-lea DHT11 (altă cameră)
   temperature2?: number;
@@ -15,6 +16,10 @@ export interface SensorReading {
   // Cele 2 senzori LDR (0–1023)
   light1?: number;
   light2?: number;
+  // Stare ventilator: pornit, mod automat și pragul de temperatură (°C)
+  fanOn?: boolean;
+  fanAuto?: boolean;
+  fanThreshold?: number;
 }
 
 export interface AlertItem {
@@ -54,10 +59,24 @@ export interface AutomationRule {
   enabled: boolean;
 }
 
+export interface Schedule {
+  id: number;
+  name?: string;
+  nodeId: string;
+  time: string;          // "HH:MM" (24h)
+  days: string;          // CSV JS getDay indices: "1,2,3,4,5"
+  action: string;
+  params?: Record<string, unknown>;
+  enabled: boolean;
+  lastRun?: string | null;
+  createdAt?: string;
+}
+
 export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
   Setup: undefined;
+  Program: undefined;
 };
 
 export type MainTabParamList = {
