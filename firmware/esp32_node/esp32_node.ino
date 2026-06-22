@@ -475,10 +475,10 @@ void publishSensors() {
   bool dht1ok = !isnan(temp1) && !isnan(humid1);
   bool dht2ok = !isnan(temp2) && !isnan(humid2);
 
-  if (!dht1ok && !dht2ok) {
-    Serial.println("[DHT] Ambii senzori in eroare — sar publicarea");
-    return;
-  }
+  // Chiar daca ambele DHT esueaza, publicam restul (gaz, lumina, miscare, fan).
+  // Doar omitem campurile de temperatura/umiditate care lipsesc.
+  if (!dht1ok && !dht2ok)
+    Serial.println("[DHT] Ambii senzori in eroare — public restul fara temperatura");
 
   // MQ-2 + LDR (ADC1, 10 biti), mediate
   int gas    = readAvg(MQ2_PIN, 5);
@@ -506,8 +506,8 @@ void publishSensors() {
       gasBaseline = (int)(gasBaseline * 0.98f + gas * 0.02f);
   }
 
-  // Control automat ventilator (mod AUTO) — prag setabil din app
-  if (fanAuto) {
+  // Control automat ventilator (mod AUTO) — doar daca avem o temperatura valida
+  if (fanAuto && (dht1ok || dht2ok)) {
     float tempAvg = dht1ok && dht2ok ? (temp1 + temp2) / 2.0f
                   : dht1ok           ? temp1
                   :                    temp2;
