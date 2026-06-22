@@ -375,6 +375,9 @@ void connectMqtt() {
   String host = resolveMqttHost();
   mqtt.setServer(host.c_str(), MQTT_PORT);
   mqtt.setCallback(onMessage);
+  // Payload-ul de senzori depaseste 256B (default PubSubClient) -> publish ar
+  // esua in tacere. Marim buffer-ul ca sa incapa tot JSON-ul.
+  mqtt.setBufferSize(512);
 
   StaticJsonDocument<96> will;
   will["node_id"] = NODE_ID;
