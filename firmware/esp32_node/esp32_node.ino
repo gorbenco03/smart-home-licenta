@@ -63,11 +63,16 @@
 #define DEFAULT_WIFI_PASS  "smarthome2026"
 #define DEFAULT_MQTT_HOST  "192.168.4.1"
 
-// Fallback final: reteaua de acasa unde RPi e deja conectat (pentru test).
+// Fallback 1: reteaua de acasa unde RPi e deja conectat.
 // Brokerul se gaseste prin mDNS (smarthome.local) pe aceasta retea.
 #define FALLBACK_WIFI_SSID  "Orange-ADXPcy-2G"
 #define FALLBACK_WIFI_PASS  "TtYbS9S24chukKxKEK"   // parola retelei (NU urca pe GitHub)
 #define FALLBACK_MQTT_HOST  "smarthome.local"
+
+// Fallback 2: hotspot de pe telefon (portabil, cu internet). 2.4GHz (Maximize Compatibility).
+#define FALLBACK2_WIFI_SSID  "Deny"
+#define FALLBACK2_WIFI_PASS  "12345678"
+#define FALLBACK2_MQTT_HOST  "smarthome.local"
 
 #define MQTT_PORT  1883
 #define MQTT_USER  "smarthome"
@@ -210,12 +215,22 @@ void connectWifi() {
     return;
   }
 
-  // 3) Fallback: reteaua de acasa unde RPi e deja conectat (test direct)
+  // 3) Fallback 1: reteaua de acasa unde RPi e deja conectat (test direct)
   if (tryWifi(FALLBACK_WIFI_SSID, FALLBACK_WIFI_PASS, 30)) {
     wifiSsid = FALLBACK_WIFI_SSID;
     wifiPass = FALLBACK_WIFI_PASS;
     mqttHost = FALLBACK_MQTT_HOST;   // gasit prin mDNS smarthome.local
     Serial.printf("[WiFi] Conectat (fallback acasa)! IP: %s\n",
+                  WiFi.localIP().toString().c_str());
+    return;
+  }
+
+  // 4) Fallback 2: hotspot de pe telefon (portabil)
+  if (tryWifi(FALLBACK2_WIFI_SSID, FALLBACK2_WIFI_PASS, 30)) {
+    wifiSsid = FALLBACK2_WIFI_SSID;
+    wifiPass = FALLBACK2_WIFI_PASS;
+    mqttHost = FALLBACK2_MQTT_HOST;  // gasit prin mDNS smarthome.local
+    Serial.printf("[WiFi] Conectat (hotspot telefon)! IP: %s\n",
                   WiFi.localIP().toString().c_str());
     return;
   }
