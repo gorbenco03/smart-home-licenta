@@ -6,7 +6,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { api } from '../services/api';
@@ -52,6 +52,19 @@ export default function ControlScreen() {
   const [activeScene, setActiveScene] = useState<SceneKey>('acasa');
   const [streamOpen, setStreamOpen]   = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+
+  // Fallback de status: la repornirea aplicației socket-ul încă n-a primit
+  // node_status, deci folosim online-ul din REST (calculat după lastSeen).
+  const { data: nodes } = useQuery({
+    queryKey: ['nodes'],
+    queryFn: api.sensors.nodes,
+    refetchInterval: 15_000,
+  });
+  const restOnline = (nodes ?? []).reduce(
+    (acc, n) => { acc[n.nodeId] = n.online; return acc; },
+    {} as Record<string, boolean>,
+  );
+  const isOnline = (id: string) => nodeStatus[id] ?? restOnline[id] ?? false;
 
   return (
     <View style={s.root}>
@@ -117,24 +130,24 @@ export default function ControlScreen() {
         </View>
 
         {/* ── Servo — draperii ──────────────────── */}
-        <ServoCard nodeId={SENSOR_NODE_ID} online={nodeStatus[SENSOR_NODE_ID] ?? false} />
+        <ServoCard nodeId={SENSOR_NODE_ID} online={isOnline(SENSOR_NODE_ID)} />
 
         {/* ── LED-uri ──────────────────────────── */}
         <LedCard
           nodeId={SENSOR_NODE_ID}
-          online={nodeStatus[SENSOR_NODE_ID] ?? false}
+          online={isOnline(SENSOR_NODE_ID)}
         />
 
         {/* ── Ventilator ───────────────────────── */}
         <FanCard
           nodeId={SENSOR_NODE_ID}
-          online={nodeStatus[SENSOR_NODE_ID] ?? false}
+          online={isOnline(SENSOR_NODE_ID)}
         />
 
         {/* ── Detecție mișcare (PIR) ───────────── */}
         <MotionCard
           nodeId={SENSOR_NODE_ID}
-          online={nodeStatus[SENSOR_NODE_ID] ?? false}
+          online={isOnline(SENSOR_NODE_ID)}
         />
 
         {/* ── Quick actions ─────────────────────── */}

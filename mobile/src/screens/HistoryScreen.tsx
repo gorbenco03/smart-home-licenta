@@ -13,15 +13,32 @@ import { SensorReading } from '../types';
 import { T, F, FONT } from '../theme';
 import { GlassCard, Chip, Icon } from '../components/ui';
 
-const NODES = [
-  { id: 'esp32_node_a', label: 'Interior' },
-  { id: 'esp32_cam_node', label: 'Curte' },
-];
+type Metric = { key: keyof SensorReading; label: string; color: string; unit: string };
+type Zone = { id: string; label: string; nodeId: string; metrics: Metric[] };
 
-const METRICS: Array<{ key: keyof SensorReading; label: string; color: string; unit: string }> = [
-  { key: 'temperature', label: 'Temperatură', color: T.warning,  unit: '°C' },
-  { key: 'humidity',    label: 'Umiditate',   color: T.info,     unit: '%' },
-  { key: 'lightLux',   label: 'Lumină',       color: T.violet,   unit: 'lux' },
+// Un singur senzor fizic deservește mai multe camere (open space):
+// living = DHT #1 + LDR1, dormitor = DHT #2 + LDR2, bucătăria = gaz + aceiași
+// DHT/umiditate ca living. Curtea = nodul cameră (mișcare).
+const T_M: Metric = { key: 'temperature',  label: 'Temperatură', color: T.warning, unit: '°C' };
+const H_M: Metric = { key: 'humidity',     label: 'Umiditate',   color: T.info,    unit: '%' };
+
+const ZONES: Zone[] = [
+  { id: 'living', label: 'Living', nodeId: 'esp32_node_a', metrics: [
+    T_M, H_M,
+    { key: 'light1', label: 'Lumină', color: T.violet, unit: '' },
+  ]},
+  { id: 'dormitor', label: 'Dormitor', nodeId: 'esp32_node_a', metrics: [
+    { key: 'temperature2', label: 'Temperatură', color: T.warning, unit: '°C' },
+    { key: 'humidity2',    label: 'Umiditate',   color: T.info,    unit: '%' },
+    { key: 'light2',       label: 'Lumină',      color: T.violet,  unit: '' },
+  ]},
+  { id: 'bucatarie', label: 'Bucătărie', nodeId: 'esp32_node_a', metrics: [
+    { key: 'gasLevel', label: 'Gaz', color: T.danger, unit: '' },
+    T_M, H_M,
+  ]},
+  { id: 'curte', label: 'Curte', nodeId: 'esp32_cam_node', metrics: [
+    { key: 'motion', label: 'Mișcare', color: T.accent, unit: '' },
+  ]},
 ];
 
 const RANGES = [
@@ -31,16 +48,22 @@ const RANGES = [
 ];
 
 export default function HistoryScreen() {
-  const [nodeId, setNodeId]  = useState(NODES[0].id);
-  const [metric, setMetric]  = useState(METRICS[0]);
+  const [zone,   setZone]    = useState(ZONES[0]);
+  const [metric, setMetric]  = useState(ZONES[0].metrics[0]);
   const [range,  setRange]   = useState(RANGES[2]);
 
+  // La schimbarea zonei, resetăm metrica la prima disponibilă pentru zona aceea
+  function selectZone(i: number) {
+    setZone(ZONES[i]);
+    setMetric(ZONES[i].metrics[0]);
+  }
+
   const { data, isLoading } = useQuery({
-    queryKey: ['history', nodeId, metric.key, range.hours],
+    queryKey: ['history', zone.nodeId, metric.key, range.hours],
     queryFn: () => {
       const to   = new Date();
       const from = new Date(Date.now() - range.hours * 3600 * 1000);
-      return api.sensors.history(nodeId, from.toISOString(), to.toISOString(), 300);
+      return api.sensors.history(zone.nodeId, from.toISOString(), to.toISOString(), 300);
     },
     refetchInterval: 30_000,
   });
@@ -66,9 +89,9 @@ export default function HistoryScreen() {
           <SelectorRow
             iconName="home-outline"
             label="Cameră"
-            options={NODES.map(n => n.label)}
-            activeIdx={NODES.findIndex(n => n.id === nodeId)}
-            onSelect={i => setNodeId(NODES[i].id)}
+            options={ZONES.map(z => z.label)}
+            activeIdx={ZONES.findIndex(z => z.id === zone.id)}
+            onSelect={selectZone}
           />
           <SelectorRow
             iconName="time-outline"
@@ -80,10 +103,10 @@ export default function HistoryScreen() {
           <SelectorRow
             iconName="pulse-outline"
             label="Metrică"
-            options={METRICS.map(m => m.label)}
-            activeIdx={METRICS.indexOf(metric)}
-            onSelect={i => setMetric(METRICS[i])}
-            colors={METRICS.map(m => m.color)}
+            options={zone.metrics.map(m => m.label)}
+            activeIdx={zone.metrics.findIndex(m => m.key === metric.key)}
+            onSelect={i => setMetric(zone.metrics[i])}
+            colors={zone.metrics.map(m => m.color)}
           />
         </View>
 
