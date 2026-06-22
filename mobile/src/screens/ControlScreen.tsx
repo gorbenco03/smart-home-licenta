@@ -26,7 +26,8 @@ type IonName = keyof typeof Ionicons.glyphMap;
 const LED_DEFS: Array<{ index: number; label: string; icon: IonName }> = [
   { index: 0, label: 'LED 1 — Living',   icon: 'bulb' },
   { index: 1, label: 'LED 2 — Dormitor', icon: 'bulb-outline' },
-  { index: 2, label: 'LED 3 — Hol',      icon: 'flash' },
+  { index: 2, label: 'LED 3 — Baie',     icon: 'flash' },
+  { index: 3, label: 'LED 4 — Curte',    icon: 'flashlight' },
 ];
 
 type SceneKey = 'acasa' | 'plec' | 'noapte' | 'cinema';
@@ -198,10 +199,27 @@ function StreamModal({ visible, onClose }: { visible: boolean; onClose: () => vo
           </View>
         </SafeAreaView>
 
+        {/* MJPEG nu se randeaza ca URI direct in WebView — il invelim intr-un
+            <img> pe fundal negru, scalat sa incapa. */}
         <WebView
-          source={{ uri: CAMERA_STREAM_URL }}
+          source={{
+            html: `<!DOCTYPE html><html><head>
+              <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+              <style>
+                html,body{margin:0;height:100%;background:#000;}
+                .wrap{display:flex;align-items:center;justify-content:center;height:100%;}
+                img{max-width:100%;max-height:100%;object-fit:contain;}
+              </style></head>
+              <body><div class="wrap">
+                <img src="${CAMERA_STREAM_URL}" />
+              </div></body></html>`,
+          }}
+          originWhitelist={['*']}
           style={sm.webview}
           javaScriptEnabled
+          domStorageEnabled
+          mixedContentMode="always"
+          allowsInlineMediaPlayback
           startInLoadingState
           renderLoading={() => (
             <View style={sm.loading}>
@@ -362,17 +380,12 @@ function ServoCard({ nodeId, online }: { nodeId: string; online: boolean }) {
 
   const mutation = useMutation({
     mutationFn: (angle: number) =>
-      api.commands.send(nodeId, 'servo_move' as any, undefined),
+      api.commands.send(nodeId, 'servo_move', { servoAngle: angle }),
     onSuccess: (_, angle) => setActiveAngle(angle),
   });
 
   function sendServo(angle: number) {
-    fetch(`${require('../services/config').API_BASE}/commands/${nodeId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'servo_move', servoAngle: angle }),
-    }).catch(() => {});
-    setActiveAngle(angle);
+    mutation.mutate(angle);
   }
 
   return (
@@ -492,7 +505,7 @@ const sv = StyleSheet.create({
 
 /* ─── LED CARD ───────────────────────────────────── */
 function LedCard({ nodeId, online }: { nodeId: string; online: boolean }) {
-  const [leds, setLeds] = useState<Record<number, boolean>>({ 0: false, 1: false, 2: false });
+  const [leds, setLeds] = useState<Record<number, boolean>>({ 0: false, 1: false, 2: false, 3: false });
 
   const mutation = useMutation({
     mutationFn: ({ action, led }: { action: string; led: number }) =>
@@ -514,7 +527,7 @@ function LedCard({ nodeId, online }: { nodeId: string; online: boolean }) {
           </View>
           <View>
             <Text style={rc.cardTitle}>LED-uri</Text>
-            <Text style={rc.cardSub}>Iluminat interior</Text>
+            <Text style={rc.cardSub}>Iluminat (3 interior + curte)</Text>
           </View>
         </View>
         <View style={[rc.countBadge, activeCount > 0 && rc.countBadgeActive]}>

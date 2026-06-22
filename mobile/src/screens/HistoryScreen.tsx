@@ -15,6 +15,7 @@ import { GlassCard, Chip, Icon } from '../components/ui';
 
 const NODES = [
   { id: 'esp32_node_a', label: 'Interior' },
+  { id: 'esp32_cam_node', label: 'Curte' },
 ];
 
 const METRICS: Array<{ key: keyof SensorReading; label: string; color: string; unit: string }> = [

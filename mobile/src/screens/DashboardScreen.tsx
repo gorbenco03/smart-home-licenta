@@ -65,17 +65,16 @@ export default function DashboardScreen() {
 
   function handleRefresh() { refetch(); refetchLatest(); }
 
-  // Aggregate stats across all nodes for the Hero card
+  // Aggregate stats across all nodes for the Hero card.
+  // IMPORTANT: media doar peste citirile care chiar au valoarea respectivă
+  // (nodul cameră nu trimite temperatură/umiditate → nu trebuie să tragă media la 0).
   const allReadings = Object.values(latestReadings);
-  const avgTemp  = allReadings.length
-    ? allReadings.reduce((s, r) => s + (r.temperature ?? 0), 0) / allReadings.length
-    : null;
-  const avgHumid = allReadings.length
-    ? allReadings.reduce((s, r) => s + (r.humidity ?? 0), 0) / allReadings.length
-    : null;
-  const avgLux = allReadings.length
-    ? allReadings.reduce((s, r) => s + (r.lightLux ?? 0), 0) / allReadings.length
-    : null;
+  const tempVals  = allReadings.filter(r => r.temperature != null).map(r => r.temperature);
+  const humidVals = allReadings.filter(r => r.humidity != null).map(r => r.humidity);
+  const luxVals   = allReadings.filter(r => r.lightLux != null).map(r => r.lightLux);
+  const avgTemp  = tempVals.length  ? tempVals.reduce((s, v) => s + v, 0) / tempVals.length   : null;
+  const avgHumid = humidVals.length ? humidVals.reduce((s, v) => s + v, 0) / humidVals.length : null;
+  const avgLux   = luxVals.length   ? luxVals.reduce((s, v) => s + v, 0) / luxVals.length     : null;
   const maxGas   = allReadings.length ? Math.max(...allReadings.map(r => r.gasLevel ?? 0)) : null;
   const anyGas   = allReadings.some(r => r.gasAlert);
   const onlineCount = (nodes ?? []).filter(n => nodeStatus[n.nodeId] ?? n.online).length;

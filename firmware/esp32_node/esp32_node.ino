@@ -84,8 +84,8 @@
 #define PIR_PIN    14   // intrare digitala — miscare
 
 // ── Pini actuatori ───────────────────────────────────────────
-const int LED_PINS[3] = { 25, 26, 33 };   // LED #0 living, #1 dormitor, #2 baie
-#define LED_OUT_PIN 32   // LED exterior (curte) — automat la miscare
+const int LED_PINS[4] = { 25, 26, 33, 32 }; // #0 living, #1 dormitor, #2 baie, #3 curte
+#define LED_OUTDOOR  3   // index LED exterior (controlabil din app + automat la miscare)
 #define BUZZER_PIN  13   // buzzer PASIV — folosim tone()
 #define BUZZER_FREQ 3000 // Hz — frecventa tonului (buzzer pasiv suna tare ~3kHz)
 #define SERVO_PIN   18   // servo jaluzele
@@ -127,7 +127,7 @@ String wifiSsid, wifiPass, mqttHost;
 unsigned long lastPublish = 0;
 unsigned long bootMillis   = 0;
 
-bool  ledState[3] = { false, false, false };
+bool  ledState[4] = { false, false, false, false };
 bool  fanState    = false;
 bool  fanAuto     = true;
 float fanThreshold = FAN_THRESHOLD_DEFAULT;
@@ -250,9 +250,9 @@ String resolveMqttHost() {
 
 /* ─── Actuatori ───────────────────────────────────────────── */
 
-// LED de camera (index 0–2)
+// LED (index 0–3: living, dormitor, baie, curte)
 void setLed(int index, bool on) {
-  if (index < 0 || index > 2) return;
+  if (index < 0 || index > 3) return;
   ledState[index] = on;
   digitalWrite(LED_PINS[index], on ? HIGH : LOW);
   Serial.printf("[LED %d] %s\n", index, on ? "PORNIT" : "OPRIT");
@@ -309,7 +309,7 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   }
   else if (action == "led_toggle") {
     int idx = doc["led"] | -1;
-    if (idx >= 0 && idx <= 2) setLed(idx, !ledState[idx]);
+    if (idx >= 0 && idx <= 3) setLed(idx, !ledState[idx]);
   }
   else if (action == "fan_on") {
     fanAuto = false; setFan(true); saveFanConfig();
@@ -333,7 +333,7 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   }
   else if (action == "motion_disarm") {
     motionArmed = false; saveMotionConfig();
-    digitalWrite(LED_OUT_PIN, LOW);   // stinge becul exterior daca era aprins
+    digitalWrite(LED_PINS[LED_OUTDOOR], ledState[LED_OUTDOOR] ? HIGH : LOW); // revine la starea manuala
     motionState = false; motionAlertActive = false;
     Serial.println("[PIR] DEZARMAT (detectie miscare oprita)");
   }
@@ -346,8 +346,7 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
     beep(doc["count"] | 1);
   }
   else if (action == "all_off") {
-    for (int i = 0; i < 3; i++) setLed(i, false);
-    digitalWrite(LED_OUT_PIN, LOW);
+    for (int i = 0; i < 4; i++) setLed(i, false);
     fanAuto = false; setFan(false); saveFanConfig();
     servoJaluzele.write(0);
     Serial.println("[all_off] Toate actuatoarele oprite");
@@ -453,14 +452,14 @@ void handleMotion() {
 
   bool m = (digitalRead(PIR_PIN) == HIGH);
 
-  if (m && !motionState) {            // front crescator
-    digitalWrite(LED_OUT_PIN, HIGH);  // becul de afara
-    beep(1);                          // bip scurt de avertizare
+  if (m && !motionState) {                       // front crescator
+    digitalWrite(LED_PINS[LED_OUTDOOR], HIGH);   // aprinde becul de afara
+    beep(1);                                     // bip scurt de avertizare
     if (mqtt.connected() && !motionAlertActive) publishMotionAlert();
     motionAlertActive = true;
     Serial.println("[PIR] Miscare!");
-  } else if (!m && motionState) {     // front descrescator
-    digitalWrite(LED_OUT_PIN, LOW);
+  } else if (!m && motionState) {                // front descrescator
+    digitalWrite(LED_PINS[LED_OUTDOOR], ledState[LED_OUTDOOR] ? HIGH : LOW); // revine la manual
     motionAlertActive = false;
   }
   motionState = m;
@@ -565,14 +564,11 @@ void setup() {
 
   analogReadResolution(10);          // 0–1023
 
-  // LED-uri de camera
-  for (int i = 0; i < 3; i++) {
+  // LED-uri (3 interior + 1 exterior/curte)
+  for (int i = 0; i < 4; i++) {
     pinMode(LED_PINS[i], OUTPUT);
     digitalWrite(LED_PINS[i], LOW);
   }
-  // LED exterior + PIR
-  pinMode(LED_OUT_PIN, OUTPUT);
-  digitalWrite(LED_OUT_PIN, LOW);
   pinMode(PIR_PIN, INPUT);
 
   // Buzzer pasiv
